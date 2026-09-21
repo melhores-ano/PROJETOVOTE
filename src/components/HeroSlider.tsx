@@ -148,10 +148,13 @@ export function HeroSlider({ editionYear = 2026, className, autoplayMs = AUTOPLA
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
   const timer = useRef<number | null>(null);
   const touchX = useRef<number | null>(null);
-  const count = HERO_SLIDES.length;
+  const count = HERO_SLIDES?.length ?? 0;
 
   const go = useCallback(
-    (next: number) => setIndex(((next % count) + count) % count),
+    (next: number) => {
+      if (!count || count <= 0) return;
+      setIndex(((next % count) + count) % count);
+    },
     [count],
   );
   const next = useCallback(() => go(index + 1), [go, index]);
@@ -168,13 +171,23 @@ export function HeroSlider({ editionYear = 2026, className, autoplayMs = AUTOPLA
 
   /* Preload discreto das imagens (não bloqueante; falha silenciosa → fallback). */
   useEffect(() => {
+    if (!HERO_SLIDES?.length) return;
     HERO_SLIDES.forEach((s, i) => {
-      const img = new Image();
-      if (i === 0) img.fetchPriority = 'high';
-      img.decoding = 'async';
-      img.onload = () => setFailedImages((f) => ({ ...f, [s.id]: false }));
-      img.onerror = () => setFailedImages((f) => ({ ...f, [s.id]: true }));
-      img.src = s.image;
+      try {
+        const img = new Image();
+        // `fetchPriority` é suportado apenas em navegadores modernos e no
+        // React 19+. Aqui é JS puro (não prop React), então usa feature-check
+        // para não quebrar em navegadores antigos.
+        if (i === 0 && 'fetchPriority' in img) {
+          (img as HTMLImageElement & { fetchPriority?: string }).fetchPriority = 'high';
+        }
+        img.decoding = 'async';
+        img.onload = () => setFailedImages((f) => ({ ...f, [s?.id]: false }));
+        img.onerror = () => setFailedImages((f) => ({ ...f, [s?.id]: true }));
+        if (s?.image) img.src = s.image;
+      } catch {
+        // Falha silenciosa → fallback de gradiente premium assume.
+      }
     });
   }, []);
 
@@ -220,36 +233,40 @@ export function HeroSlider({ editionYear = 2026, className, autoplayMs = AUTOPLA
       }}
     >
       {/* ===== Slides ===== */}
-      {HERO_SLIDES.map((slide, i) => {
+      {(HERO_SLIDES ?? []).map((slide, i) => {
         const active = i === index;
-        const imgFailed = failedImages[slide.id] === true;
+        const imgFailed = failedImages?.[slide?.id] === true;
         return (
           <div
-            key={slide.id}
+            key={slide?.id ?? i}
             aria-hidden={!active}
             aria-roledescription="slide"
-            aria-label={`${i + 1} de ${count}: ${slide.titleA} ${slide.titleB}`}
+            aria-label={`${i + 1} de ${count}: ${slide?.titleA ?? ''} ${slide?.titleB ?? ''}`}
             className={cn(
               'absolute inset-0 transition-opacity duration-[1100ms] ease-out',
               active ? 'z-10 opacity-100' : 'pointer-events-none z-0 opacity-0',
             )}
           >
             {/* Fundo: gradiente premium SEMPRE + imagem cover quando existir */}
-            <div className={cn('absolute inset-0 bg-gradient-to-br', slide.fallbackGradient)} aria-hidden />
-            {!imgFailed && (
+            <div className={cn('absolute inset-0 bg-gradient-to-br', slide?.fallbackGradient)} aria-hidden />
+            {!imgFailed && slide?.image && (
               <div className="absolute inset-0 overflow-hidden" aria-hidden>
                 <img
-                  src={slide.image}
+                  src={slide?.image}
                   alt=""
                   aria-hidden
                   draggable={false}
                   loading={i === 0 ? 'eager' : 'lazy'}
-                  fetchPriority={i === 0 ? 'high' : 'auto'}
                   decoding="async"
-                  onError={() => setFailedImages((f) => ({ ...f, [slide.id]: true }))}
+                  // NOTA: `fetchPriority` camelCase não existe no React 18
+                  // (gera "React does not recognize the fetchPriority prop").
+                  // Prioridade da 1ª imagem já coberta por <link rel="preload">
+                  // em index.html + loading="eager". Não reintroduzir sem
+                  // upgrade para React 19+.
+                  onError={() => setFailedImages((f) => ({ ...f, [slide?.id]: true }))}
                   style={{
-                    ['--hero-pos-desktop' as string]: slide.desktopPosition,
-                    ['--hero-pos-mobile' as string]: slide.mobilePosition,
+                    ['--hero-pos-desktop' as string]: slide?.desktopPosition ?? 'center center',
+                    ['--hero-pos-mobile' as string]: slide?.mobilePosition ?? 'center center',
                   }}
                   className={cn(
                     'hero-img-pos h-full w-full object-cover',
@@ -281,11 +298,11 @@ export function HeroSlider({ editionYear = 2026, className, autoplayMs = AUTOPLA
       {/* ===== Conteúdo (HTML independente das fotografias) — FASE 5B.4: escala editorial reduzida ===== */}
       <div className="relative z-20 mx-auto flex min-h-[inherit] max-w-7xl flex-col justify-center px-5 pb-36 pt-14 sm:px-6 sm:pb-40 lg:pb-44">
         <div className="max-w-[660px]" aria-live="polite">
-          {HERO_SLIDES.map((slide, i) => {
+          {(HERO_SLIDES ?? []).map((slide, i) => {
             const active = i === index;
             return (
               <div
-                key={slide.id}
+                key={slide?.id ?? i}
                 className={cn(
                   active ? 'hero-slide-enter' : 'hidden',
                 )}
@@ -295,35 +312,35 @@ export function HeroSlider({ editionYear = 2026, className, autoplayMs = AUTOPLA
                   <span className="inline-flex items-center rounded-full bg-gold-500/90 px-2 py-0.5 text-[9px] font-semibold tracking-[0.14em] text-navy-950">
                     {editionYear}
                   </span>
-                  <span className="text-slate-300/90">{slide.eyebrow}</span>
+                  <span className="text-slate-300/90">{slide?.eyebrow ?? ''}</span>
                 </p>
                 <h1 className="hero-anim-2 hero-headline mt-5">
-                  {slide.titleA}
+                  {slide?.titleA ?? ''}
                   <br />
-                  <span className="text-gold-gradient">{slide.titleB}</span>
+                  <span className="text-gold-gradient">{slide?.titleB ?? ''}</span>
                 </h1>
                 <p className="hero-anim-3 hero-description mt-4">
-                  {slide.description}
+                  {slide?.description ?? ''}
                 </p>
                 <div className="hero-anim-4 mt-7 flex flex-col gap-2.5 sm:flex-row sm:items-center">
                   <button
-                    onClick={() => handleCTA(navigate, buildPath, slide.primaryCTA.href)}
+                    onClick={() => handleCTA(navigate, buildPath, slide?.primaryCTA?.href ?? '/cidades')}
                     tabIndex={active ? 0 : -1}
                     className="btn-gold-refined w-full sm:w-auto"
                   >
-                    <CTAIcon icon={slide.primaryCTA.icon ?? 'none'} />
-                    {slide.primaryCTA.label}
+                    <CTAIcon icon={slide?.primaryCTA?.icon ?? 'none'} />
+                    {slide?.primaryCTA?.label ?? 'Começar'}
                   </button>
-                  {slide.secondaryCTA && (
+                  {slide?.secondaryCTA && (
                     <button
-                      onClick={() => handleCTA(navigate, buildPath, slide.secondaryCTA!.href)}
+                      onClick={() => handleCTA(navigate, buildPath, slide?.secondaryCTA?.href ?? '/cidades')}
                       tabIndex={active ? 0 : -1}
                       className="btn-ghost-refined w-full sm:w-auto"
                     >
-                      {slide.secondaryCTA.icon && slide.secondaryCTA.icon !== 'none' && (
+                      {slide?.secondaryCTA?.icon && slide.secondaryCTA.icon !== 'none' && (
                         <CTAIcon icon={slide.secondaryCTA.icon} />
                       )}
-                      {slide.secondaryCTA.label}
+                      {slide?.secondaryCTA?.label ?? ''}
                     </button>
                   )}
                 </div>
@@ -347,14 +364,14 @@ export function HeroSlider({ editionYear = 2026, className, autoplayMs = AUTOPLA
             <div className="mx-auto flex max-w-7xl items-center justify-between px-5 sm:px-6">
           {/* Dots */}
           <div className="flex items-center gap-2.5" role="tablist" aria-label="Escolher destaque">
-            {HERO_SLIDES.map((slide, i) => {
+            {(HERO_SLIDES ?? []).map((slide, i) => {
               const active = i === index;
               return (
                 <button
-                  key={slide.id}
+                  key={slide?.id ?? i}
                   role="tab"
                   aria-selected={active}
-                  aria-label={`Ir para destaque ${i + 1}: ${slide.titleA} ${slide.titleB}`}
+                  aria-label={`Ir para destaque ${i + 1}: ${slide?.titleA ?? ''} ${slide?.titleB ?? ''}`}
                   onClick={() => {
                     interactionPause();
                     go(i);

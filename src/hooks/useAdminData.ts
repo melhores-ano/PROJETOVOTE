@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { belongsToCountry, belongsToProgram, isSponsorVisible } from '../lib/awardProgram';
 import { fallbackBusinesses, fallbackCategories, fallbackCities } from '../data/fallback';
-import type { AuditLog, Business, Category, City, Profile, Sponsor, VoteAttemptOutcome } from '../types/database';
+import type { AuditLog, AwardDistinction, AwardModality, Business, Category, City, Profile, Sponsor, VoteAttemptOutcome } from '../types/database';
 
 /** Indica se os dados são reais (Supabase) ou de demonstração local. */
 export const isLive = isSupabaseConfigured;
@@ -400,5 +400,81 @@ export function useScopedSponsors(programId: string | null): AsyncState<Sponsor[
     },
     [],
     [programId ?? null],
+  );
+}
+
+/* ---------- FASE 5C.3.8 — modalidades isoladas por programa + categoria ----------
+ * Única fonte do scope: AdminProgramProvider (selectedProgramId). FAIL-CLOSED:
+ * sem programa válido → [] (nunca lista global, nunca fallback silencioso).
+ * Sem algoritmo automático: só fundação de dados (definições de modalidades).
+ * O resultado eleitoral (votes / vote_adjustments) NÃO é lido nem alterado.
+ */
+
+export function useScopedModalities(
+  programId: string | null,
+  categoryId: string | null = null,
+): AsyncState<AwardModality[]> {
+  return useAsync<AwardModality[]>(
+    async () => {
+      if (!programId) return [];
+      if (!supabase) return [];
+      let q = supabase
+        .from('award_modalities')
+        .select('*, category:categories(id, name, slug)')
+        .eq('award_program_id', programId)
+        .order('position')
+        .order('name');
+      if (categoryId) q = q.eq('category_id', categoryId);
+      const { data, error } = await q;
+      if (error) {
+        // Tabela ainda não aplicada no remoto (migration 0014 pendente de
+        // revisão) → lista vazia fail-closed em vez de erro fatal.
+        if (String(error.message).includes('award_modalities') || String((error as { code?: string }).code) === '42P01') {
+          return [];
+        }
+        throw error;
+      }
+      return ((data ?? []) as AwardModality[]).filter(
+        (m) => belongsToProgram(m.award_program_id, programId),
+      );
+    },
+    [],
+    [programId ?? null, categoryId ?? null],
+  );
+}
+
+/* ---------- FASE 5C.3.8 — distinções por edição (fundação, só leitura) ----------
+ * Lê award_distinctions SEMPRE filtradas por campanha válida do programa
+ * (selectedCampaignId). Mérito (award_status) e comercial (commercial_status)
+ * apresentados em separado; nada aqui escreve em votes / vote_adjustments.
+ */
+export function useScopedDistinctions(
+  campaignId: string | null,
+  programId: string | null,
+): AsyncState<AwardDistinction[]> {
+  return useAsync<AwardDistinction[]>(
+    async () => {
+      if (!campaignId || !programId) return [];
+      if (!supabase) return [];
+      const { data, error } = await supabase
+        .from('award_distinctions')
+        .select('*, modality:award_modalities(id, name, slug, award_program_id)')
+        .eq('campaign_id', campaignId)
+        .order('created_at', { ascending: false })
+        .limit(500);
+      if (error) {
+        if (String(error.message).includes('award_distinctions') || String((error as { code?: string }).code) === '42P01') {
+          return [];
+        }
+        throw error;
+      }
+      // Defesa em profundidade: distinção cuja modalidade é de outro
+      // programa nunca é apresentada (fail-closed client-side).
+      return ((data ?? []) as AwardDistinction[]).filter(
+        (d) => !d.modality || belongsToProgram(d.modality.award_program_id, programId),
+      );
+    },
+    [],
+    [campaignId ?? null, programId ?? null],
   );
 }

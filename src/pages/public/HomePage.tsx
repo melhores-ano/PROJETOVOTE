@@ -22,13 +22,13 @@ export default function HomePage() {
   const campaignQuery = useActiveCampaign();
   const configQuery = useSiteConfig();
 
-  const cities = citiesQuery.data ?? [];
-  const results = useCitySearch(cities, term);
-  const showSuggestions = term.trim().length > 0;
+  const cities = citiesQuery?.data ?? [];
+  const results = useCitySearch(cities ?? [], term ?? '');
+  const showSuggestions = (term ?? '').trim().length > 0;
 
-  const featured = useMemo(() => cities.slice(0, 8), [cities]);
-  const tagline = configQuery.data?.branding.tagline ?? 'A sua cidade. A sua escolha. O seu voto.';
-  const editionYear = campaignQuery.data?.year ?? 2026;
+  const featured = useMemo(() => (cities ?? []).slice(0, 8), [cities]);
+  const tagline = configQuery?.data?.branding?.tagline ?? 'A sua cidade. A sua escolha. O seu voto.';
+  const editionYear = campaignQuery?.data?.year ?? 2026;
 
   return (
     <div>
@@ -87,27 +87,27 @@ export default function HomePage() {
                     role="listbox"
                     className="absolute inset-x-0 top-full z-40 mt-2 overflow-hidden rounded-[12px] border border-white/10 bg-navy-850 shadow-card"
                   >
-                    {citiesQuery.loading ? (
+                    {citiesQuery?.loading ? (
                       <p className="px-4 py-4 text-sm text-slate-400">A pesquisar cidadesâ€¦</p>
-                    ) : results.length === 0 ? (
+                    ) : (results ?? []).length === 0 ? (
                       <p className="px-4 py-4 text-sm text-slate-400">
                         Ainda nÃ£o existe essa cidade.{' '}
                         <ProgramLink to="/cidades" className="text-gold-300 underline">Ver todas as cidades</ProgramLink>
                       </p>
                     ) : (
                       <ul className="max-h-64 overflow-auto py-1">
-                        {results.slice(0, 7).map((c) => (
-                          <li key={c.id} role="option" aria-selected="false">
+                        {(results ?? []).slice(0, 7).map((c) => (
+                          <li key={c?.id ?? c?.slug ?? Math.random().toString(36)} role="option" aria-selected="false">
                             <button
-                              onClick={() => navigate(programPaths.city(prefix, c.slug))}
+                              onClick={() => c?.slug && navigate(programPaths.city(prefix, c.slug))}
                               className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-white/5"
                             >
                               <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold-500/10">
                                 <MapPin className="h-4 w-4 text-gold-400" aria-hidden />
                               </span>
                               <span>
-                                <span className="block text-sm font-semibold text-white">{c.name}</span>
-                                <span className="block text-xs text-slate-500">{c.district ?? 'Portugal'}</span>
+                                <span className="block text-sm font-semibold text-white">{c?.name ?? 'Cidade'}</span>
+                                <span className="block text-xs text-slate-500">{c?.district ?? 'Portugal'}</span>
                               </span>
                               <ChevronRight className="ml-auto h-4 w-4 text-slate-600" aria-hidden />
                             </button>
@@ -123,8 +123,8 @@ export default function HomePage() {
             {/* MÃ©tricas â€” escala reduzida ~25%, dourado sÃ³ no nÃºmero */}
             <dl className="mt-5 grid grid-cols-1 gap-px overflow-hidden rounded-[12px] border border-white/[0.07] bg-white/[0.06] sm:grid-cols-3">
               {[
-                { icon: Landmark, value: `${cities.length}+`, label: 'Cidades', hint: 'de norte a sul' },
-                { icon: Star, value: `${categoriesQuery.data?.length ?? 8}`, label: 'Categorias', hint: 'do comÃ©rcio local' },
+                { icon: Landmark, value: `${(cities ?? []).length}+`, label: 'Cidades', hint: 'de norte a sul' },
+                { icon: Star, value: `${categoriesQuery?.data?.length ?? 8}`, label: 'Categorias', hint: 'do comÃ©rcio local' },
                 { icon: Users, value: '100%', label: 'Voto popular', hint: 'a comunidade decide' },
               ].map((s) => (
                 <div
@@ -156,23 +156,23 @@ export default function HomePage() {
           title={<>Cidades em destaque</>}
           description="Escolha a sua cidade e descubra as categorias e os negÃ³cios participantes na ediÃ§Ã£o deste ano."
         />
-        {citiesQuery.loading ? (
+        {citiesQuery?.loading ? (
           <LoadingGrid count={8} />
-        ) : featured.length === 0 ? (
+        ) : (featured ?? []).length === 0 ? (
           <EmptyState title="Sem cidades de momento" description="Estamos a preparar as cidades participantes. Volte em breve." />
         ) : (
           <>
             <div className="stagger grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {featured.map((city) => (
+              {(featured ?? []).map((city) => (
                 <ProgramLink
-                  key={city.id}
-                  to={`/cidade/${city.slug}`}
+                  key={city?.id ?? city?.slug ?? city?.name}
+                  to={`/cidade/${city?.slug ?? ''}`}
                   className="card-lift group overflow-hidden rounded-[14px] border border-white/[0.08] bg-white/[0.025] hover:border-gold-500/25"
                 >
                   <div className="relative flex h-32 items-end overflow-hidden bg-gradient-to-br from-navy-700 via-navy-800 to-navy-950 p-4">
-                    {city.image_url ? (
+                    {city?.image_url ? (
                       <>
-                        <img src={city.image_url} alt="" aria-hidden loading="lazy" className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]" />
+                        <img src={city.image_url} alt="" aria-hidden loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]" />
                         <div className="absolute inset-0 bg-gradient-to-t from-navy-950/85 via-navy-950/25 to-transparent" aria-hidden />
                       </>
                     ) : (
@@ -180,16 +180,16 @@ export default function HomePage() {
                     )}
                     <MapPin className="absolute right-4 top-4 h-4 w-4 text-gold-500/50 transition group-hover:text-gold-400/80" />
                     <p className="relative font-display text-4xl font-bold text-white/10">
-                      {city.name.charAt(0)}
+                      {city?.name?.charAt(0) ?? '?'}
                     </p>
                   </div>
                   <div className="p-5">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                      {city.district ?? 'Portugal'}
+                      {city?.district ?? 'Portugal'}
                     </p>
-                    <h3 className="mt-1 font-display text-[1.15rem] font-bold text-white">{city.name}</h3>
+                    <h3 className="mt-1 font-display text-[1.15rem] font-bold text-white">{city?.name ?? 'Cidade'}</h3>
                     <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-slate-400">
-                      {city.description ?? 'Descubra os melhores negÃ³cios locais.'}
+                      {city?.description ?? 'Descubra os melhores negÃ³cios locais.'}
                     </p>
                     <span className="mt-3 inline-flex items-center gap-1 text-[13px] font-semibold text-gold-300/90">
                       Explorar cidade <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
@@ -219,22 +219,22 @@ export default function HomePage() {
           title={<>Categorias do prÃ©mio</>}
           description="Da barbearia Ã  pastelaria, cada categoria celebra o melhor do comÃ©rcio local portuguÃªs."
         />
-        {categoriesQuery.loading ? (
+        {categoriesQuery?.loading ? (
           <LoadingGrid count={8} />
         ) : (
           <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {(categoriesQuery.data ?? []).map((cat) => {
-              const Icon = categoryIcon(cat.icon);
+            {(categoriesQuery?.data ?? []).map((cat) => {
+              const Icon = categoryIcon(cat?.icon);
               return (
                 <div
-                  key={cat.id}
+                  key={cat?.id ?? cat?.name}
                   className="card-lift rounded-[14px] border border-white/[0.08] bg-white/[0.025] p-5 hover:border-gold-500/25"
                 >
                   <span className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-gold-500/20 bg-gold-500/[0.08]">
                     <Icon className="h-[18px] w-[18px] text-gold-400" strokeWidth={2} />
                   </span>
-                  <h3 className="mt-4 font-display text-[1.1rem] font-bold text-white">{cat.name}</h3>
-                  <p className="mt-1 text-[13px] leading-relaxed text-slate-400">{cat.description}</p>
+                  <h3 className="mt-4 font-display text-[1.1rem] font-bold text-white">{cat?.name ?? 'Categoria'}</h3>
+                  <p className="mt-1 text-[13px] leading-relaxed text-slate-400">{cat?.description ?? ''}</p>
                 </div>
               );
             })}
@@ -280,13 +280,13 @@ export default function HomePage() {
                 EdiÃ§Ã£o actual
               </Badge>
               <h2 className="editorial-h2 mt-4">
-                {campaignQuery.data?.name ?? 'PrÃ©mios Melhores do Ano Portugal 2026'}
+                {campaignQuery?.data?.name ?? 'PrÃ©mios Melhores do Ano Portugal 2026'}
               </h2>
               <p className="mt-3 max-w-lg text-[15px] leading-relaxed text-slate-400">
-                {campaignQuery.data?.start_at && campaignQuery.data?.end_at ? (
+                {campaignQuery?.data?.start_at && campaignQuery?.data?.end_at ? (
                   <>De {formatDatePt(campaignQuery.data.start_at)} a {formatDatePt(campaignQuery.data.end_at)}.</>
                 ) : (
-                  <>A ediÃ§Ã£o de {campaignQuery.data?.year ?? 2026} estÃ¡ em curso em todo o paÃ­s.</>
+                  <>A ediÃ§Ã£o de {campaignQuery?.data?.year ?? 2026} estÃ¡ em curso em todo o paÃ­s.</>
                 )}{' '}
                 Os vencedores de cada cidade e categoria recebem o selo oficial dos Melhores do Ano.
               </p>
@@ -298,7 +298,7 @@ export default function HomePage() {
                   Participar agora <ArrowRight className="h-4 w-4" />
                 </ProgramLink>
                 {/* FASE 4E: sÃ³ existe quando results_public=true (sem contagens aqui). */}
-                {campaignQuery.data?.results_public === true && (
+                {campaignQuery?.data?.results_public === true && (
                   <ProgramLink
                     to="/resultados"
                     className="btn-ghost-refined"

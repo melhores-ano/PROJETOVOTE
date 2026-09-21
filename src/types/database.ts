@@ -236,6 +236,74 @@ export interface Sponsor {
   updated_at: string;
 }
 
+/**
+ * FASE 5C.3.8 — Modalidades / Distinções.
+ * REGRA INEGOCIÁVEL: resultado eleitoral (votes / vote_adjustments) e adesão
+ * comercial são coisas diferentes. award_status (mérito) e commercial_status
+ * (relação comercial) vivem em colunas SEPARADAS em AwardDistinction:
+ * commercial_status = 'declined' NUNCA transfere o 1.º lugar nem altera
+ * votos/ranking. source = 'manual' significa registo administrativo auditado,
+ * nunca manipulação de votos. Sem algoritmo automático nesta fase.
+ */
+export type AwardDistinctionSource =
+  | 'general_vote'
+  | 'modality_vote'
+  | 'jury'
+  | 'editorial'
+  | 'manual';
+
+export type AwardStatus =
+  | 'eligible'
+  | 'selected'
+  | 'winner'
+  | 'confirmed'
+  | 'cancelled';
+
+export type CommercialStatus =
+  | 'pending'
+  | 'contacted'
+  | 'accepted'
+  | 'declined'
+  | 'confirmed'
+  | 'cancelled';
+
+/** FASE 5C.3.8: DEFINIÇÃO da modalidade (award_modalities). Sem seeds. */
+export interface AwardModality {
+  id: string;
+  award_program_id: string;
+  category_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  icon: string | null;
+  active: boolean;
+  position: number;
+  created_at: string;
+  updated_at: string;
+  /** Joins opcionais */
+  category?: Category | null;
+}
+
+/** FASE 5C.3.8: DISTINÇÃO atribuída numa edição (award_distinctions). */
+export interface AwardDistinction {
+  id: string;
+  campaign_id: string;
+  city_id: string;
+  category_id: string;
+  modality_id: string;
+  business_id: string;
+  award_status: AwardStatus;
+  commercial_status: CommercialStatus;
+  source: AwardDistinctionSource;
+  position: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  /** Joins opcionais */
+  modality?: AwardModality | null;
+  business?: Business | null;
+}
+
 /** Configuração agregada do sítio (lida a partir de site_settings) */
 export interface SiteConfig {
   siteName: string;
