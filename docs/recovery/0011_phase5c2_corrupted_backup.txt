@@ -1,0 +1,13 @@
+// cast-vote ANTIGA publicada (pré-5C.3.2) — sem coluna award_program_id no filtro
+const { data: settings } = await supabase
+  .from("site_settings")
+  .select("key, value")
+  .in("key", [
+    "voting_enabled",
+    "turnstile_enabled",
+    "turnstile_site_key",
+    "vote_rate_window_seconds",
+    "vote_rate_max_attempts",
+    "vote_rate_max_votes_24h",
+  ]);
+// + lookup por key via .find(s => s.key === k), defaults votingEnabled=true, turnstile=false

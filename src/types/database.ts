@@ -1,0 +1,261 @@
+/**
+ * Prémios Melhores do Ano Portugal — Phase 1
+ * Tipos TypeScript alinhados 1:1 com o esquema PostgreSQL/Supabase.
+ * A base de dados é a fonte de verdade; estes tipos espelham as tabelas.
+ */
+
+export type CampaignStatus = 'rascunho' | 'activa' | 'votacao' | 'encerrada' | 'arquivada';
+export type AdminRole = 'admin' | 'super_admin';
+export type VoteAttemptOutcome = 'aceite' | 'duplicado' | 'bloqueado' | 'invalido' | 'rate_limit';
+
+/**
+ * FASE 5C.2 — Fundação estrutural multipaís (retrocompatível).
+ * Marca-mãe: THE BEST EUROPA (institucional, não modelada por programa).
+ * Nesta fase só existe PT / Melhores do Ano Portugal. Portugal funciona
+ * exactamente como antes; os campos novos são aditivos e opcionais no
+ * frontend até às rotas /pt/ /fr/ (5C.3).
+ */
+export interface Country {
+  code: string;
+  name: string;
+  default_locale: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AwardProgram {
+  id: string;
+  country_code: string;
+  name: string;
+  slug: string;
+  locale: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Campaign {
+  id: string;
+  name: string;
+  slug: string;
+  year: number;
+  /** FASE 5C.2: programa nacional dono da edição. NOT NULL na BD após backfill. */
+  award_program_id?: string | null;
+  start_at: string | null;
+  end_at: string | null;
+  status: CampaignStatus;
+  results_public: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface City {
+  id: string;
+  name: string;
+  slug: string;
+  district: string | null;
+  /** FASE 5C.2: país da cidade (FK → countries). Backfill PT. district mantido. */
+  country_code?: string | null;
+  description: string | null;
+  image_url: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  /** Nome do ícone lucide-react, ex: "Scissors", "UtensilsCrossed" */
+  icon: string | null;
+  /** FASE 5C.2: programa dono + locale. Backfill: programa Portugal / pt-PT. */
+  award_program_id?: string | null;
+  locale?: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Business {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  logo_url: string | null;
+  cover_url: string | null;
+  website: string | null;
+  instagram: string | null;
+  facebook: string | null;
+  google_maps_url: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  city_id: string | null;
+  active: boolean;
+  verified: boolean;
+  created_at: string;
+  updated_at: string;
+  /**
+   * FASE 5C.2: país NÃO duplicado — deriva-se de city_id → cities.country_code.
+   * Sem alteração estrutural; slugs/URLs preservados.
+   */
+  /** Relações expandidas (joins opcionais) */
+  city?: City | null;
+  categories?: Category[];
+}
+
+export interface BusinessCategory {
+  business_id: string;
+  category_id: string;
+  created_at: string;
+}
+
+export interface CampaignEntry {
+  id: string;
+  campaign_id: string;
+  city_id: string;
+  category_id: string;
+  business_id: string;
+  active: boolean;
+  featured: boolean;
+  position: number;
+  created_at: string;
+  updated_at: string;
+  /** Joins opcionais */
+  campaign?: Campaign | null;
+  city?: City | null;
+  category?: Category | null;
+  business?: Business | null;
+}
+
+export interface Vote {
+  id: string;
+  campaign_id: string;
+  city_id: string;
+  category_id: string;
+  business_id: string;
+  campaign_entry_id: string | null;
+  ip_hash: string;
+  device_hash: string | null;
+  user_agent_hash: string | null;
+  created_at: string;
+}
+
+export interface VoteAttempt {
+  id: string;
+  campaign_id: string | null;
+  city_id: string | null;
+  category_id: string | null;
+  business_id: string | null;
+  outcome: VoteAttemptOutcome;
+  reason: string | null;
+  ip_hash: string | null;
+  device_hash: string | null;
+  created_at: string;
+}
+
+/**
+ * FASE 4F — Ajuste administrativo manual de votos (+/-) por participante.
+ * Espelha public.vote_adjustments (migration 0010). Tabela IMUTÁVEL:
+ * sem UPDATE/DELETE — correcções via novo ajuste compensatório.
+ * Leitura/escrita directa só por admins (RLS); sem UI nesta etapa.
+ */
+export interface VoteAdjustment {
+  id: string;
+  campaign_id: string;
+  campaign_entry_id: string;
+  business_id: string;
+  city_id: string;
+  category_id: string;
+  /** Quantidade: positiva (acrescenta) ou negativa (remove). Nunca zero. */
+  adjustment: number;
+  /** Motivo obrigatório da correcção. */
+  reason: string;
+  /** Admin responsável (profiles.id) — null se o perfil foi removido. */
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface Profile {
+  id: string;
+  email: string;
+  role: AdminRole;
+  display_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SiteSetting {
+  /** FASE 5C.3.2: PK técnica (migration 0012). */
+  id: string;
+  key: string;
+  value: SiteSettingValue;
+  /** 0007: apenas chaves com is_public=true sao legiveis por anon. */
+  is_public: boolean;
+  /**
+   * FASE 5C.3.2: NULL = configuração global THE BEST EUROPA;
+   * preenchido = override do award_program (Portugal nesta fase).
+   * Unicidade: UNIQUE parcial global (key WHERE NULL) + UNIQUE parcial
+   * por programa (key, award_program_id WHERE NOT NULL).
+   */
+  award_program_id: string | null;
+  description: string | null;
+  updated_at: string;
+}
+
+export type SiteSettingValue = string | number | boolean | Record<string, unknown> | unknown[];
+
+export interface AuditLog {
+  id: string;
+  actor_id: string | null;
+  action: string;
+  entity: string | null;
+  entity_id: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface Sponsor {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+  website: string | null;
+  tier: string | null;
+  /**
+   * FASE 5C.2: NULL = patrocinador global The Best Europa;
+   * preenchido = patrocinador do programa nacional. Actuais mantidos a NULL.
+   */
+  award_program_id?: string | null;
+  active: boolean;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Configuração agregada do sítio (lida a partir de site_settings) */
+export interface SiteConfig {
+  siteName: string;
+  activeCampaignSlug: string | null;
+  maintenanceMode: boolean;
+  resultsVisible: boolean;
+  votingRules: string;
+  branding: {
+    tagline: string;
+    primaryCta: string;
+  };
+}
+
+/** Resultado agregado de votos por participante (apenas admin / resultados públicos) */
+export interface EntryResult {
+  campaign_entry_id: string;
+  business_id: string;
+  business_name: string;
+  business_slug: string;
+  city_slug: string;
+  category_slug: string;
+  total_votes: number;
+}

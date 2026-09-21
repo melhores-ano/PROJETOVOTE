@@ -1,0 +1,280 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --navy: #0a1628;
+  --navy-deep: #070f1e;
+  --gold: #c9a227;
+  --ink: #e8edf4;
+  --ink-muted: #9aa7ba;
+  --ink-faint: #64748f;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-gold: rgba(201, 162, 39, 0.18);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: #070f1e;
+  color: #e8edf4;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.font-display {
+  font-family: 'Playfair Display', Georgia, serif;
+  letter-spacing: -0.01em;
+}
+
+/* ============ FASE 5B.4 — Editorial premium / minimalista ============
+   Dourado = acento pontual. Base: navy profundo, off-white, cinza frio.
+   Escala tipográfica partilhada (não reinventar por página):
+   H1 interno 40–48px · H2 30–36px · H3 22–26px · body 15–17px ·
+   small 13–14px · micro/eyebrow 10–12px. */
+
+.editorial-h1 {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.06;
+  color: #f2f5f9;
+  font-size: clamp(2.25rem, 3.4vw + 1rem, 2.875rem); /* 36 → 46px */
+}
+
+.editorial-h2 {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.12;
+  color: #f2f5f9;
+  font-size: clamp(1.75rem, 2vw + 1rem, 2.125rem); /* 28 → 34px */
+}
+
+.editorial-h3 {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #f2f5f9;
+  font-size: clamp(1.25rem, 1vw + 1rem, 1.5rem); /* 20 → 24px */
+}
+
+.editorial-body {
+  font-size: 1rem; /* 16px */
+  line-height: 1.6;
+  color: #b7c1d1;
+}
+
+.editorial-micro {
+  font-size: 0.6875rem; /* 11px */
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+/* Headline do Hero — fotografia respira. Máx ~60px desktop. */
+.hero-headline {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.02;
+  color: #faf7ef;
+  max-width: 660px;
+  font-size: clamp(2.25rem, 4.6vw + 0.9rem, 3.75rem); /* 36 → 60px */
+}
+@media (min-width: 1280px) {
+  .hero-headline { font-size: clamp(2.5rem, 3.4vw + 0.8rem, 3.9rem); }
+}
+
+.hero-description {
+  max-width: 560px;
+  line-height: 1.6;
+  color: #c3ccd9;
+  font-size: 1rem;
+}
+@media (min-width: 768px) {
+  .hero-description { font-size: 1.0625rem; } /* 17px */
+}
+
+/* Eyebrow institucional — detalhe, não CTA */
+.eyebrow-institutional {
+  font-size: 0.6875rem; /* 11px */
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+/* Card premium minimalista — navy subtil, border quase invisível */
+.card-premium {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+}
+.card-premium-hover {
+  transition: transform 0.25s ease, border-color 0.25s ease, background 0.25s ease;
+}
+.card-premium-hover:hover {
+  transform: translateY(-2px);
+  border-color: rgba(201, 162, 39, 0.28);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* Botões requintados — 44–48px, 14px, radius 10–12px, sem glow pesado */
+.btn-gold-refined {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 46px;
+  padding: 0.7rem 1.375rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #b8941f 0%, #c9a227 45%, #d9b545 100%);
+  color: #0a1628;
+  box-shadow: 0 8px 24px -10px rgba(201, 162, 39, 0.35);
+  transition: transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease;
+}
+.btn-gold-refined:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.btn-gold-refined:active { transform: translateY(0); }
+
+.btn-ghost-refined {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 46px;
+  padding: 0.7rem 1.375rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(10, 22, 40, 0.4);
+  color: #eef3f9;
+  backdrop-filter: blur(8px);
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+.btn-ghost-refined:hover { border-color: rgba(201, 162, 39, 0.4); background: rgba(255, 255, 255, 0.06); transform: translateY(-1px); }
+.btn-ghost-refined:active { transform: translateY(0); }
+
+/* Elegant gold text */
+.text-gold-gradient {
+  background: linear-gradient(135deg, #8a6d14 0%, #c9a227 30%, #f0d998 50%, #c9a227 70%, #8a6d14 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Thin elegant scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #0a1628; }
+::-webkit-scrollbar-thumb { background: #25466f; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #c9a227; }
+
+/* Card hover lift — subtil e editorial (máx 2px, 200–300ms) */
+.card-lift {
+  transition: transform 0.25s ease, border-color 0.25s ease, background-color 0.25s ease;
+}
+.card-lift:hover {
+  transform: translateY(-2px);
+}
+
+/* Staggered entrance */
+.stagger > * {
+  animation: fadeUp 0.7s ease-out both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0.05s; }
+.stagger > *:nth-child(2) { animation-delay: 0.12s; }
+.stagger > *:nth-child(3) { animation-delay: 0.19s; }
+.stagger > *:nth-child(4) { animation-delay: 0.26s; }
+.stagger > *:nth-child(5) { animation-delay: 0.33s; }
+.stagger > *:nth-child(6) { animation-delay: 0.40s; }
+.stagger > *:nth-child(7) { animation-delay: 0.47s; }
+.stagger > *:nth-child(8) { animation-delay: 0.54s; }
+.stagger > *:nth-child(9) { animation-delay: 0.61s; }
+.stagger > *:nth-child(10) { animation-delay: 0.68s; }
+.stagger > *:nth-child(11) { animation-delay: 0.75s; }
+.stagger > *:nth-child(12) { animation-delay: 0.82s; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Skeleton shimmer */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(201, 162, 39, 0.12), transparent);
+  animation: shimmer 1.8s infinite;
+}
+@keyframes shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+/* Focus visibility */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid #c9a227;
+  outline-offset: 2px;
+}
+
+/* ============ FASE 5B.3 — Hero slider · imagens oficiais ============ */
+
+/* Enquadramento por slide: object-position centralizado no array HERO_SLIDES
+   (desktopPosition / mobilePosition via CSS vars — sem hacks no componente). */
+.hero-img-pos {
+  object-position: var(--hero-pos-desktop, center center);
+}
+@media (max-width: 768px) {
+  .hero-img-pos {
+    object-position: var(--hero-pos-mobile, var(--hero-pos-desktop, center center));
+  }
+}
+
+/* Entrada do conteúdo do slide ativo — fade + translateY curto e premium.
+   Delays progressivos: eyebrow 100ms → headline 200ms → descrição 300ms → CTAs 400ms. */
+.hero-slide-enter .hero-anim-1 { animation: heroSlideIn 0.7s 0.1s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.hero-slide-enter .hero-anim-2 { animation: heroSlideIn 0.7s 0.2s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.hero-slide-enter .hero-anim-3 { animation: heroSlideIn 0.7s 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.hero-slide-enter .hero-anim-4 { animation: heroSlideIn 0.7s 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes heroSlideIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Movimento cinematográfico muito subtil: scale 1 → 1.035 durante o slide. */
+.hero-kenburns {
+  transform-origin: center 60%;
+  animation: heroKenBurns 6.5s ease-out both;
+}
+@keyframes heroKenBurns {
+  from { transform: scale(1); }
+  to { transform: scale(1.035); }
+}
+
+/* Acessibilidade: desativar movimento decorativo */
+@media (prefers-reduced-motion: reduce) {
+  .hero-slide-enter .hero-anim-1,
+  .hero-slide-enter .hero-anim-2,
+  .hero-slide-enter .hero-anim-3,
+  .hero-slide-enter .hero-anim-4,
+  .hero-kenburns {
+    animation: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}

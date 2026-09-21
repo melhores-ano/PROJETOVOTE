@@ -1,0 +1,41 @@
+{
+  "name": "projetovote",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test:voting": "node scripts/test-voting-engine.mjs",
+    "test:results": "node scripts/test-results-ranking.mjs",
+    "test:csv": "node scripts/test-csv-import.mjs",
+    "backend:apply": "node scripts/apply-migrations.mjs",
+    "backend:verify": "node scripts/verify-real-backend.mjs",
+    "backend:test-vote": "node scripts/test-real-voting.mjs",
+    "backend:4b:check": "node scripts/prompt-4b-check.mjs",
+    "backend:4b:audit": "node scripts/prompt-4b-audit.mjs",
+    "backend:4b:secrets": "node scripts/prompt-4b-secrets.mjs --status",
+    "backend:4b:deploy": "node scripts/prompt-4b-deploy.mjs",
+    "backend:4b:vote-tests": "node scripts/prompt-4b-vote-tests.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.116.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.4",
+    "tailwind-merge": "^2.5.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.16",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}

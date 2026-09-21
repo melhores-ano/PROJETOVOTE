@@ -1,0 +1,12 @@
+node_modules
+.git
+dist
+dist-electron
+dist-release
+build
+.next
+.vite
+.turbo
+.cache
+coverage
+*.log
