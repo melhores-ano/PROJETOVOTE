@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { belongsToCountry, belongsToProgram, isSponsorVisible } from '../lib/awardProgram';
 import { fallbackBusinesses, fallbackCategories, fallbackCities } from '../data/fallback';
-import type { AuditLog, AwardDistinction, AwardModality, Business, Category, City, Profile, Sponsor, VoteAttemptOutcome } from '../types/database';
+import type { AuditLog, AwardDistinction, AwardModality, Business, Category, City, DistinctionFulfillment, Profile, Sponsor, VoteAttemptOutcome } from '../types/database';
 
 /** Indica se os dados são reais (Supabase) ou de demonstração local. */
 export const isLive = isSupabaseConfigured;
@@ -476,5 +476,53 @@ export function useScopedDistinctions(
     },
     [],
     [campaignId ?? null, programId ?? null],
+  );
+}
+
+/* ---------- FASE 5C.3.12 — reconhecimento/entrega por distinção ----------
+ * Lê distinction_fulfillment (migration 0016) SEMPRE filtrado pelas
+ * distinções da campanha/programa selecionados (fail-closed: sem campanha
+ * ou sem programa → {}). Mapa distinção → itens. NUNCA lê nem escreve em
+ * votes / vote_attempts / vote_adjustments / modality_votes; NUNCA altera
+ * award_status / commercial_status / ranking. Notas administrativas nunca
+ * expostas no público (esta é área admin). Tabela ainda não aplicada no
+ * remoto → {} fail-closed em vez de erro fatal.
+ */
+export function useScopedFulfillment(
+  distinctionIds: string[],
+): AsyncState<Record<string, DistinctionFulfillment[]>> {
+  const key = useMemo(
+    () => JSON.stringify([...new Set(distinctionIds.filter(Boolean))].sort()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify([...new Set(distinctionIds.filter(Boolean))].sort().slice(0, 500))],
+  );
+  return useAsync<Record<string, DistinctionFulfillment[]>>(
+    async () => {
+      const ids = JSON.parse(key) as string[];
+      if (ids.length === 0) return {};
+      if (!supabase) return {};
+      const { data, error } = await supabase
+        .from('distinction_fulfillment')
+        .select('*')
+        .in('award_distinction_id', ids.slice(0, 500))
+        .order('item_type')
+        .limit(2000);
+      if (error) {
+        if (
+          String(error.message).includes('distinction_fulfillment') ||
+          String((error as { code?: string }).code) === '42P01'
+        ) {
+          return {};
+        }
+        throw error;
+      }
+      const out: Record<string, DistinctionFulfillment[]> = {};
+      for (const row of (data ?? []) as DistinctionFulfillment[]) {
+        (out[row.award_distinction_id] ??= []).push(row);
+      }
+      return out;
+    },
+    {},
+    [key],
   );
 }

@@ -344,6 +344,48 @@ export interface ModalityVoteAttempt {
   created_at: string;
 }
 
+/**
+ * FASE 5C.3.12 — Reconhecimento/entrega das distinções.
+ * REGRA INEGOCIÁVEL: fulfillment é a QUARTA dimensão, totalmente separada de
+ * (1) resultado eleitoral (votes/ranking/posição), (2) mérito (award_status)
+ * e (3) relação comercial (commercial_status). Uma alteração no fulfillment
+ * NUNCA altera votos, ranking, posição, award_status, commercial_status,
+ * vencedor ou resultados públicos. Notas SEMPRE administrativas (nunca
+ * públicas). SEM pagamentos, SEM seeds, SEM 2027, SEM novo país/programa.
+ * Persistência: public.distinction_fulfillment (migration 0016, local).
+ */
+export type FulfillmentItemType =
+  | 'certificate'
+  | 'digital_seal'
+  | 'plaque'
+  | 'trophy';
+
+export type FulfillmentStatus =
+  | 'pending'
+  | 'preparing'
+  | 'ready'
+  | 'delivered'
+  | 'cancelled';
+
+export type FulfillmentDeliveryMethod =
+  | 'pickup'
+  | 'delivery'
+  | 'event';
+
+/** FASE 5C.3.12: item de reconhecimento/entrega (distinction_fulfillment). */
+export interface DistinctionFulfillment {
+  id: string;
+  award_distinction_id: string;
+  item_type: FulfillmentItemType;
+  status: FulfillmentStatus;
+  notes: string | null;
+  delivery_method: FulfillmentDeliveryMethod | null;
+  tracking_reference: string | null;
+  delivered_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 /** Configuração agregada do sítio (lida a partir de site_settings) */
 export interface SiteConfig {
   siteName: string;

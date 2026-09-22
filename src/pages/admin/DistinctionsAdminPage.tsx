@@ -1,35 +1,45 @@
 /**
- * THE BEST EUROPA — FASE 5C.3.11 — Admin > Distinções (fluxo operacional).
+ * THE BEST EUROPA — FASE 5C.3.11 + 5C.3.12 — Admin > Distinções.
  *
  * Ferramenta operacional pós-votação SEM manipular o resultado oficial:
  *  - Colunas separadas: EMPRESA / CIDADE / CATEGORIA / MODALIDADE / POSIÇÃO
  *    (via get_admin_modality_tally) / ORIGEM / MÉRITO (award_status) /
- *    ESTADO COMERCIAL (commercial_status) / NOTAS / ÚLTIMA ATUALIZAÇÃO.
- *  - award_status (mérito) e commercial_status (relação comercial) são
- *    dimensões INDEPENDENTES em award_distinctions.
+ *    ESTADO COMERCIAL (commercial_status) / RECONHECIMENTO (fulfillment) /
+ *    NOTAS / ÚLTIMA ATUALIZAÇÃO.
+ *  - award_status (mérito), commercial_status (relação comercial) e
+ *    fulfillment (reconhecimento/entrega, 5C.3.12) são dimensões
+ *    INDEPENDENTES. Fulfillment NUNCA altera mérito, comercial, votos,
+ *    rankings, vencedores ou resultados públicos.
  *  - commercial_status = declined mostra "Recusou a distinção" mas preserva
  *    empresa, modalidade, posição, award_status, votos e histórico. NUNCA
  *    altera mérito, votos, rankings ou cria outra distinção.
  *  - Pipeline comercial (CRM simples, SEM pagamento):
  *      Pendente → Contactado → Aceite → Confirmado,
  *      Pendente/Contactado → Recusado, qualquer → Cancelado.
- *  - Ações rápidas usam SOMENTE updateCommercialStatus (auditado).
+ *  - Reconhecimento (5C.3.12, SEM pagamentos, SEM gerador de PDF/imagem):
+ *      Certificado · Selo digital · Placa · Troféu, cada um com estado
+ *      Pendente|Em preparação|Pronto|Entregue|Cancelado + notas
+ *      administrativas (nunca públicas) + entrega simples para físicos
+ *      (Levantamento|Entrega|Evento + tracking + delivered_at).
+ *  - Ações rápidas usam SOMENTE updateCommercialStatus (auditado);
+ *    reconhecimento usa SOMENTE a lib fulfillment (auditada).
  *
  * Scope: AdminProgramProvider (única fonte) — programa + país + edição.
  * FAIL-CLOSED: sem programa válido → sem dados; sem edição válida →
- * sem criar/alterar distinções.
+ * sem criar/alterar distinções ou reconhecimento.
  *
  * SEM monetização, SEM seeds, SEM 2027, SEM novo país/programa.
  * NÃO toca em votes / vote_attempts / vote_adjustments / modality_votes.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Award, PhoneCall, StickyNote } from 'lucide-react';
+import { Award, PackageCheck, PhoneCall, StickyNote } from 'lucide-react';
 import {
   useScopedBusinesses,
   useScopedCategories,
   useScopedCities,
   useScopedDistinctions,
+  useScopedFulfillment,
   useScopedModalities,
 } from '../../hooks/useAdminData';
 import { useAdminProgram } from '../../hooks/useAdminProgram';
@@ -49,10 +59,29 @@ import {
   updateCommercialStatus,
   updateDistinctionNotes,
 } from '../../lib/distinctions';
+import {
+  FULFILLMENT_DELIVERY_LABELS,
+  FULFILLMENT_DELIVERY_METHODS,
+  FULFILLMENT_ITEM_LABELS,
+  FULFILLMENT_ITEM_TYPES,
+  FULFILLMENT_STATUS_LABELS,
+  FULFILLMENT_STATUSES,
+  createFulfillmentItem,
+  fulfillmentCompactLabel,
+  fulfillmentEligibilityHint,
+  isPhysicalFulfillmentItem,
+  removeFulfillmentItem,
+  summarizeFulfillment,
+  updateFulfillmentItem,
+} from '../../lib/fulfillment';
 import type {
   AwardDistinction,
   AwardStatus,
   CommercialStatus,
+  DistinctionFulfillment,
+  FulfillmentDeliveryMethod,
+  FulfillmentItemType,
+  FulfillmentStatus,
 } from '../../types/database';
 import {
   AdminHeader,
@@ -87,9 +116,16 @@ interface ConfirmState {
   total_votes: number;
 }
 
-function pillClass(kind: 'award' | 'commercial' | 'source', value: string): string {
+function pillClass(kind: 'award' | 'commercial' | 'source' | 'fulfillment', value: string): string {
   if (kind === 'source') {
     return 'border-sky-500/30 bg-sky-500/10 text-sky-200';
+  }
+  if (kind === 'fulfillment') {
+    if (value === 'delivered') return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200';
+    if (value === 'ready') return 'border-teal-500/30 bg-teal-500/10 text-teal-200';
+    if (value === 'preparing') return 'border-amber-500/30 bg-amber-500/10 text-amber-200';
+    if (value === 'cancelled') return 'border-red-500/30 bg-red-500/10 text-red-200';
+    return 'border-white/15 bg-white/5 text-slate-300';
   }
   const emerald = ['confirmed', 'winner', 'accepted'];
   const amber = ['selected', 'contacted'];
@@ -98,6 +134,304 @@ function pillClass(kind: 'award' | 'commercial' | 'source', value: string): stri
   if (amber.includes(value)) return 'border-amber-500/30 bg-amber-500/10 text-amber-200';
   if (red.includes(value)) return 'border-red-500/30 bg-red-500/10 text-red-200';
   return 'border-white/15 bg-white/5 text-slate-300';
+}
+
+/* ---------------------------------------------------------------------------
+ * FASE 5C.3.12 — Gestor de reconhecimento/entrega (modal por distinção).
+ * Permite selecionar [ ] Certificado [ ] Selo digital [ ] Placa [ ] Troféu;
+ * para cada item: estado, notas administrativas, método de entrega +
+ * tracking + delivered_at (físicos), última atualização. NÃO gera PDF/imagem,
+ * NÃO altera mérito/comercial/votos/ranking — escreve SOMENTE em
+ * distinction_fulfillment via lib fulfillment (auditada). Fail-closed: sem
+ * edição válida → escrita bloqueada.
+ * ------------------------------------------------------------------------- */
+
+function FulfillmentManager({
+  distinction,
+  businessName,
+  items,
+  hasCampaign,
+  onChanged,
+  onClose,
+}: {
+  distinction: AwardDistinction;
+  businessName: string;
+  items: DistinctionFulfillment[];
+  hasCampaign: boolean;
+  onChanged: () => void;
+  onClose: () => void;
+}) {
+  const byType = useMemo(() => {
+    const m = new Map<FulfillmentItemType, DistinctionFulfillment>();
+    for (const it of items) m.set(it.item_type, it);
+    return m;
+  }, [items]);
+  const [selected, setSelected] = useState<Record<FulfillmentItemType, boolean>>(() => ({
+    certificate: byType.has('certificate'),
+    digital_seal: byType.has('digital_seal'),
+    plaque: byType.has('plaque'),
+    trophy: byType.has('trophy'),
+  }));
+  const [drafts, setDrafts] = useState<
+    Record<
+      FulfillmentItemType,
+      {
+        status: FulfillmentStatus;
+        notes: string;
+        delivery_method: '' | FulfillmentDeliveryMethod;
+        tracking_reference: string;
+        delivered_at: string;
+      }
+    >
+  >(() => {
+    const mk = (t: FulfillmentItemType) => {
+      const ex = byType.get(t);
+      return {
+        status: ex?.status ?? ('pending' as FulfillmentStatus),
+        notes: ex?.notes ?? '',
+        delivery_method: (ex?.delivery_method ?? '') as '' | FulfillmentDeliveryMethod,
+        tracking_reference: ex?.tracking_reference ?? '',
+        delivered_at: ex?.delivered_at ? String(ex.delivered_at).slice(0, 16) : '',
+      };
+    };
+    return {
+      certificate: mk('certificate'),
+      digital_seal: mk('digital_seal'),
+      plaque: mk('plaque'),
+      trophy: mk('trophy'),
+    };
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  const eligibilityHint = fulfillmentEligibilityHint(distinction);
+
+  function toggle(t: FulfillmentItemType, v: boolean) {
+    setSelected((s) => ({ ...s, [t]: v }));
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setInfo(null);
+    if (!hasCampaign) {
+      setError('Sem edição válida — alteração bloqueada (fail-closed).');
+      return;
+    }
+    setSaving(true);
+    try {
+      // Para cada tipo: selecionado sem registo → INSERT; selecionado com
+      // registo → UPDATE; desselecionado com registo → DELETE (remoção
+      // estrutural; preferir estado Cancelado quando for só operacional).
+      for (const t of FULFILLMENT_ITEM_TYPES) {
+        const existing = byType.get(t);
+        const want = selected[t];
+        const d = drafts[t];
+        if (want && !existing) {
+          const physical = isPhysicalFulfillmentItem(t);
+          const res = await createFulfillmentItem({
+            award_distinction_id: distinction.id,
+            item_type: t,
+            status: d.status,
+            notes: d.notes.trim() === '' ? null : d.notes.trim(),
+            delivery_method: physical && d.delivery_method !== '' ? d.delivery_method : null,
+            tracking_reference: physical && d.tracking_reference.trim() !== '' ? d.tracking_reference.trim() : null,
+            delivered_at:
+              d.status === 'delivered' && d.delivered_at !== ''
+                ? new Date(d.delivered_at).toISOString()
+                : null,
+          });
+          if (res.duplicate) {
+            await updateFulfillmentItem(
+              { id: (byType.get(t)?.id ?? '') as string },
+              {},
+            ).catch(() => undefined);
+          }
+        } else if (want && existing) {
+          const physical = isPhysicalFulfillmentItem(t);
+          await updateFulfillmentItem(
+            { id: existing.id },
+            {
+              status: d.status,
+              notes: d.notes.trim() === '' ? null : d.notes.trim(),
+              delivery_method: physical ? (d.delivery_method === '' ? null : d.delivery_method) : null,
+              tracking_reference:
+                physical ? (d.tracking_reference.trim() === '' ? null : d.tracking_reference.trim()) : null,
+              delivered_at:
+                d.status === 'delivered' && d.delivered_at !== ''
+                  ? new Date(d.delivered_at).toISOString()
+                  : d.status === 'delivered'
+                    ? existing.delivered_at
+                    : null,
+            },
+          );
+        } else if (!want && existing) {
+          await removeFulfillmentItem({
+            id: existing.id,
+            award_distinction_id: existing.award_distinction_id,
+            item_type: existing.item_type,
+          });
+        }
+      }
+      setInfo('Reconhecimento guardado. Mérito, relação comercial, votos e ranking inalterados.');
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao guardar o reconhecimento.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title={`Gerir reconhecimento — ${businessName}`} onClose={onClose} wide>
+      <form onSubmit={handleSave} className="space-y-4">
+        <FormError message={error} />
+        {info && (
+          <p role="status" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2.5 text-xs text-emerald-200">
+            {info}
+          </p>
+        )}
+        {eligibilityHint && (
+          <p role="note" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs leading-relaxed text-amber-200">
+            {eligibilityHint} O reconhecimento é apenas operacional e nunca altera os outros estados.
+          </p>
+        )}
+        <p className="rounded-xl border border-white/10 bg-navy-950/60 px-3.5 py-2.5 text-xs leading-relaxed text-slate-400">
+          Controlo administrativo (sem gerador de PDF/imagem): assinale os itens aplicáveis. Cada item tem estado
+          próprio (Pendente · Em preparação · Pronto · Entregue · Cancelado) e notas administrativas — nunca públicas.
+          Placa e Troféu aceitam dados de entrega (Levantamento · Entrega · Evento + referência + data).
+        </p>
+        <div className="space-y-3">
+          {FULFILLMENT_ITEM_TYPES.map((t) => {
+            const existing = byType.get(t);
+            const d = drafts[t];
+            const physical = isPhysicalFulfillmentItem(t);
+            return (
+              <fieldset key={t} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                <label className="flex cursor-pointer items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selected[t]}
+                    onChange={(e) => toggle(t, e.target.checked)}
+                    className="h-4 w-4 accent-yellow-500"
+                  />
+                  <span className="text-sm font-semibold text-white">{FULFILLMENT_ITEM_LABELS[t]}</span>
+                  {existing && (
+                    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${pillClass('fulfillment', existing.status)}`}>
+                      {FULFILLMENT_STATUS_LABELS[existing.status]}
+                    </span>
+                  )}
+                  {!physical && (
+                    <span className="text-[11px] text-slate-500">(controlo administrativo — sem ficheiro gerado)</span>
+                  )}
+                </label>
+                {selected[t] && (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <Field label="Estado">
+                      <Select
+                        value={d.status}
+                        onChange={(e) =>
+                          setDrafts((prev) => ({
+                            ...prev,
+                            [t]: { ...prev[t], status: e.target.value as FulfillmentStatus },
+                          }))
+                        }
+                      >
+                        {FULFILLMENT_STATUSES.map((s) => (
+                          <option key={s} value={s} className="bg-navy-900">
+                            {FULFILLMENT_STATUS_LABELS[s]}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Data de entrega (quando aplicável)">
+                      <TextInput
+                        type="datetime-local"
+                        value={d.delivered_at}
+                        onChange={(e) =>
+                          setDrafts((prev) => ({
+                            ...prev,
+                            [t]: { ...prev[t], delivered_at: e.target.value },
+                          }))
+                        }
+                      />
+                    </Field>
+                    {physical && (
+                      <>
+                        <Field label="Método de entrega">
+                          <Select
+                            value={d.delivery_method}
+                            onChange={(e) =>
+                              setDrafts((prev) => ({
+                                ...prev,
+                                [t]: {
+                                  ...prev[t],
+                                  delivery_method: e.target.value as '' | FulfillmentDeliveryMethod,
+                                },
+                              }))
+                            }
+                          >
+                            <option value="" className="bg-navy-900">— Não aplicável —</option>
+                            {FULFILLMENT_DELIVERY_METHODS.map((m) => (
+                              <option key={m} value={m} className="bg-navy-900">
+                                {FULFILLMENT_DELIVERY_LABELS[m]}
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                        <Field label="Referência de entrega (tracking)">
+                          <TextInput
+                            value={d.tracking_reference}
+                            onChange={(e) =>
+                              setDrafts((prev) => ({
+                                ...prev,
+                                [t]: { ...prev[t], tracking_reference: e.target.value },
+                              }))
+                            }
+                            placeholder="Ex.: EVENTO-2026-014"
+                          />
+                        </Field>
+                      </>
+                    )}
+                    <div className={physical ? 'sm:col-span-2' : 'sm:col-span-2'}>
+                      <Field label="Notas administrativas (nunca públicas)">
+                        <TextArea
+                          value={d.notes}
+                          onChange={(e) =>
+                            setDrafts((prev) => ({
+                              ...prev,
+                              [t]: { ...prev[t], notes: e.target.value },
+                            }))
+                          }
+                          rows={2}
+                          placeholder={
+                            t === 'plaque'
+                              ? 'Ex.: Placa enviada para produção'
+                              : t === 'certificate'
+                                ? 'Ex.: Certificado conferido'
+                                : t === 'digital_seal'
+                                  ? 'Ex.: Selo digital pronto a enviar'
+                                  : 'Ex.: Entrega prevista no evento'
+                          }
+                        />
+                      </Field>
+                    </div>
+                    {existing && (
+                      <p className="text-[11px] text-slate-500 sm:col-span-2">
+                        Última atualização: {new Date(String(existing.updated_at)).toLocaleString('pt-PT')}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </fieldset>
+            );
+          })}
+        </div>
+        <FormActions onCancel={onClose} saving={saving} saveLabel="Guardar reconhecimento" />
+      </form>
+    </Modal>
+  );
 }
 
 export default function DistinctionsAdminPage() {
@@ -152,6 +486,9 @@ export default function DistinctionsAdminPage() {
   const [notesDraft, setNotesDraft] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
+
+  // FASE 5C.3.12 — reconhecimento/entrega (quarta dimensão, independente).
+  const [fulfillmentTarget, setFulfillmentTarget] = useState<AwardDistinction | null>(null);
 
   const [rowError, setRowError] = useState<string | null>(null);
   const [busyRowId, setBusyRowId] = useState<string | null>(null);
@@ -323,6 +660,22 @@ export default function DistinctionsAdminPage() {
     const confirmed = filtered.filter((d) => d.commercial_status === 'confirmed').length;
     return { total, pending, contacted, accepted, declined, confirmed };
   }, [filtered]);
+
+  // FASE 5C.3.12 — mapa distinção → itens de reconhecimento.
+  // Isolado por campanha/programa porque os IDs vêm de `distinctions`
+  // (já filtradas por selectedCampaignId + programa). Fail-closed: sem
+  // distinções → {} (hook retorna vazio, nunca global).
+  const distinctionIds = useMemo(() => distinctions.map((d) => d.id), [distinctions]);
+  const fulfillmentQuery = useScopedFulfillment(distinctionIds);
+  const fulfillmentByDistinction = useMemo(
+    () => fulfillmentQuery.data ?? {},
+    [fulfillmentQuery.data],
+  );
+  // Resumo OPERACIONAL (nunca votos/ranking): agregado sobre os itens.
+  const fulfillmentSummary = useMemo(() => {
+    const all: DistinctionFulfillment[] = Object.values(fulfillmentByDistinction).flat();
+    return summarizeFulfillment(all);
+  }, [fulfillmentByDistinction]);
 
   const loading =
     citiesQuery.loading ||
@@ -512,6 +865,37 @@ export default function DistinctionsAdminPage() {
                 <p className="mt-0.5 text-[11px] text-slate-500">{c.hint}</p>
               </div>
             ))}
+          </div>
+
+          {/* FASE 5C.3.12 — resumo OPERACIONAL do reconhecimento (nunca
+              votos/ranking). Números sobre distinction_fulfillment. */}
+          <div className="mt-3 rounded-2xl border border-teal-500/20 bg-teal-500/[0.04] p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              Reconhecimento — resumo operacional
+            </p>
+            <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {[
+                { label: 'Reconhecimentos pendentes', value: fulfillmentSummary.pending, hint: 'fulfillment = pendente' },
+                { label: 'Em preparação', value: fulfillmentSummary.preparing, hint: 'fulfillment = em preparação' },
+                { label: 'Prontos', value: fulfillmentSummary.ready, hint: 'fulfillment = pronto' },
+                { label: 'Entregues', value: fulfillmentSummary.delivered, hint: 'fulfillment = entregue' },
+                { label: 'Total de itens', value: fulfillmentSummary.total, hint: 'itens configurados' },
+              ].map((c) => (
+                <div key={c.label} className="rounded-xl border border-white/10 bg-navy-950/50 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{c.label}</p>
+                  <p className="mt-1 text-xl font-bold text-white">{c.value}</p>
+                  <p className="mt-0.5 text-[11px] text-slate-500">{c.hint}</p>
+                </div>
+              ))}
+            </div>
+            {fulfillmentQuery.error && (
+              <p role="alert" className="mt-2 text-xs text-red-300">
+                Reconhecimento indisponível: {fulfillmentQuery.error}
+              </p>
+            )}
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+              Números operacionais sobre o reconhecimento/entrega — nunca misturados com votos ou ranking.
+            </p>
           </div>
 
           <AdminCard title={`Filtros — ${selectedProgram?.name}`} className="mt-4">
@@ -749,6 +1133,57 @@ export default function DistinctionsAdminPage() {
                     },
                   },
                   {
+                    key: 'fulfillment',
+                    label: 'Reconhecimento',
+                    render: (r) => {
+                      const d = r as unknown as AwardDistinction;
+                      const items = fulfillmentByDistinction[d.id] ?? [];
+                      return (
+                        <span className="flex min-w-44 flex-col gap-1.5">
+                          <span className="text-[11px] leading-relaxed text-slate-300" title="Resumo operacional do reconhecimento">
+                            {fulfillmentCompactLabel(items)}
+                          </span>
+                          {items.length > 0 && (
+                            <span className="flex max-w-52 flex-wrap gap-1">
+                              {items.map((it) => (
+                                <span
+                                  key={it.id}
+                                  title={`${FULFILLMENT_ITEM_LABELS[it.item_type]} — ${FULFILLMENT_STATUS_LABELS[it.status]}`}
+                                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${pillClass('fulfillment', it.status)}`}
+                                >
+                                  {FULFILLMENT_ITEM_LABELS[it.item_type]} · {FULFILLMENT_STATUS_LABELS[it.status]}
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                          <span className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setFulfillmentTarget(d)}
+                              disabled={!hasCampaign}
+                              title={items.length > 0 ? 'Ver reconhecimento' : 'Configurar reconhecimento'}
+                              className="inline-flex items-center gap-1 rounded-lg border border-teal-500/40 bg-teal-500/10 px-2.5 py-1 text-xs font-semibold text-teal-200 transition hover:bg-teal-500/20 disabled:opacity-40"
+                            >
+                              <PackageCheck className="h-3 w-3" />
+                              {items.length > 0 ? 'Ver reconhecimento' : 'Configurar'}
+                            </button>
+                            {items.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setFulfillmentTarget(d)}
+                                disabled={!hasCampaign}
+                                title="Gerir reconhecimento"
+                                className="inline-flex items-center gap-1 rounded-lg border border-white/15 px-2.5 py-1 text-xs text-slate-300 transition hover:border-gold-500/50 hover:text-gold-300 disabled:opacity-40"
+                              >
+                                Gerir reconhecimento
+                              </button>
+                            )}
+                          </span>
+                        </span>
+                      );
+                    },
+                  },
+                  {
                     key: 'notes',
                     label: 'Notas',
                     render: (r) => {
@@ -872,6 +1307,22 @@ export default function DistinctionsAdminPage() {
             <FormActions onCancel={() => setNotesTarget(null)} saving={savingNotes} saveLabel="Guardar notas" />
           </form>
         </Modal>
+      )}
+
+      {/* FASE 5C.3.12 — gerir reconhecimento/entrega (quarta dimensão).
+          Escreve SOMENTE em distinction_fulfillment; nunca altera mérito,
+          comercial, votos, ranking ou resultados públicos. */}
+      {fulfillmentTarget && (
+        <FulfillmentManager
+          distinction={fulfillmentTarget}
+          businessName={businessById.get(fulfillmentTarget.business_id)?.name ?? 'empresa'}
+          items={fulfillmentByDistinction[fulfillmentTarget.id] ?? []}
+          hasCampaign={hasCampaign}
+          onChanged={() => {
+            fulfillmentQuery.refetch();
+          }}
+          onClose={() => setFulfillmentTarget(null)}
+        />
       )}
     </div>
   );
