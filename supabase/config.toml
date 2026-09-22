@@ -296,3 +296,13 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 [functions.cast-vote]
 enabled = true
 verify_jwt = false
+
+# FASE 5C.3.9 — Edge Function cast-modality-vote: votacao independente por
+# modalidade (tabela SEPARADA modality_votes; cast-vote permanece intocavel).
+# verify_jwt = false corresponde ao deploy manual com --no-verify-jwt
+# (voto publico anonimo, como cast-vote).
+# enabled = true permite `supabase functions serve` local sem alterar o remoto.
+# NAO executar deploy nesta fase — ficheiro local para revisao humana.
+[functions.cast-modality-vote]
+enabled = true
+verify_jwt = false

@@ -10,6 +10,8 @@
     "test:voting": "node scripts/test-voting-engine.mjs",
     "test:results": "node scripts/test-results-ranking.mjs",
     "test:csv": "node scripts/test-csv-import.mjs",
+    "verify:5c38": "node scripts/verify-phase5c38.mjs",
+    "verify:5c39": "node scripts/verify-phase5c39.mjs",
     "backend:apply": "node scripts/apply-migrations.mjs",
     "backend:verify": "node scripts/verify-real-backend.mjs",
     "backend:test-vote": "node scripts/test-real-voting.mjs",

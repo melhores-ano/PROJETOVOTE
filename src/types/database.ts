@@ -304,6 +304,46 @@ export interface AwardDistinction {
   business?: Business | null;
 }
 
+/**
+ * FASE 5C.3.9 — Voto independente por modalidade (modality_votes).
+ * Tabela SEPARADA de votes: nenhum voto de modalidade aparece como voto
+ * principal e vice-versa. 1 pessoa = 1 voto POR MODALIDADE
+ * (UNIQUE campaign, city, category, modality, ip_hash). Sem IP em claro.
+ * vote_adjustments NUNCA usado para modalidades. award_distinctions NÃO
+ * preenchida automaticamente nesta fase.
+ */
+export interface ModalityVote {
+  id: string;
+  campaign_id: string;
+  city_id: string;
+  category_id: string;
+  modality_id: string;
+  business_id: string;
+  campaign_entry_id: string | null;
+  ip_hash: string;
+  device_hash: string | null;
+  user_agent_hash: string | null;
+  created_at: string;
+  /** Joins opcionais */
+  modality?: AwardModality | null;
+  business?: Business | null;
+}
+
+/** FASE 5C.3.9: telemetria antifraude SEPARADA (modality_vote_attempts). */
+export interface ModalityVoteAttempt {
+  id: string;
+  campaign_id: string | null;
+  city_id: string | null;
+  category_id: string | null;
+  modality_id: string | null;
+  business_id: string | null;
+  outcome: VoteAttemptOutcome;
+  reason: string | null;
+  ip_hash: string | null;
+  device_hash: string | null;
+  created_at: string;
+}
+
 /** Configuração agregada do sítio (lida a partir de site_settings) */
 export interface SiteConfig {
   siteName: string;

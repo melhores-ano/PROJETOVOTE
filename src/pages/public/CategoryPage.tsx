@@ -1,15 +1,19 @@
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ProgramLink, useProgram } from '../../hooks/useProgram';
 import { programPaths } from '../../lib/programRoute';
-import { ArrowLeft, ArrowRight, BadgeCheck, MapPin, ShieldCheck, Star, Trophy, Vote } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BadgeCheck, CheckCircle2, MapPin, ShieldCheck, Star, Trophy, Vote } from 'lucide-react';
 import { useActiveCampaign, useCategories, useCity } from '../../hooks/useDirectory';
 import { useEntries } from '../../hooks/useEntries';
+import { useCategoryModalities } from '../../hooks/useCategoryModalities';
 import { usePublishedResults } from '../../hooks/usePublishedResults';
 import { useVotingSettings } from '../../hooks/useVotingSettings';
 import { useVoting } from '../../hooks/useVoting';
+import { useModalityVoting } from '../../hooks/useModalityVoting';
 import { usePageMeta } from '../../components/PageMeta';
 import { categoryIcon } from '../../components/icons';
 import { VoteModal } from '../../components/VoteModal';
+import { ModalityVoteStep } from '../../components/ModalityVoteStep';
 import { Badge, EmptyState, ErrorState, LoadingGrid, Eyebrow } from '../../components/ui';
 import { demoScopeKey, hasLocalVoteMark } from '../../lib/voting';
 
@@ -30,6 +34,14 @@ export default function CategoryPage() {
   const entriesQuery = useEntries(campaignQuery.data?.id, city?.id, category?.id);
   const votingSettings = useVotingSettings();
   const voting = useVoting();
+  // FASE 5C.3.9 — segunda etapa OPCIONAL (nunca altera o voto principal):
+  // modalidades activas da categoria/programa actual + máquina de estados
+  // própria do voto de modalidade. Hooks ANTES de qualquer early return.
+  const modalitiesQuery = useCategoryModalities(category?.id);
+  const modalityVoting = useModalityVoting();
+  // Âmbito do "Terminar" da segunda etapa: vale só para a categoria actual
+  // (mudar de categoria mostra a etapa dessa categoria, sem arrastar estado).
+  const [modalityDismissedScope, setModalityDismissedScope] = useState<string | null>(null);
   const campaign = campaignQuery.data ?? null;
   // FASE 4E: autoridade estrita — só consulta o agregado quando publicado.
   // Se results_public=false, a RPC nem é chamada (nada a inferir no browser).
@@ -97,6 +109,16 @@ export default function CategoryPage() {
     ? demoScopeKey(campaign.id, city.id, category.id)
     : null;
   const categoryVoted = scopeKey ? hasLocalVoteMark(scopeKey) : false;
+  // FASE 5C.3.9 — a segunda etapa (destaques) só aparece DEPOIS do voto
+  // principal registado com sucesso. O voto principal conclui-se sozinho:
+  // nada aqui é exigido para terminar o voto principal.
+  const mainVoteRegistered =
+    categoryVoted ||
+    (voting.phase === 'done' && (voting.status === 'success' || voting.status === 'already_voted'));
+  const modalityDismissed = modalityDismissedScope !== null && modalityDismissedScope === scopeKey;
+  const showModalityStep = Boolean(
+    mainVoteRegistered && !modalityDismissed && campaign && city && category,
+  );
 
   return (
     <div>
@@ -250,6 +272,59 @@ export default function CategoryPage() {
               );
             })}
           </div>
+        )}
+
+        {/* FASE 5C.3.9 — segunda etapa OPCIONAL: só depois do voto principal
+            registado com sucesso. "Voto registado!" confirma a etapa principal;
+            "Agora escolha os destaques desta categoria" (ModalityVoteStep)
+            oferece 1 voto POR modalidade activa — votar numa, em várias,
+            ignorar todas ou terminar. Empresas listadas: só participantes
+            elegíveis da campanha × cidade × categoria actuais (entries). */}
+        {showModalityStep && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mx-auto mt-10 flex max-w-7xl items-start gap-3 rounded-[14px] border border-emerald-500/25 bg-emerald-500/[0.07] px-5 py-4 sm:px-6"
+          >
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
+            <div>
+              <p className="font-display text-lg font-bold text-white">Voto registado!</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-slate-300">
+                Obrigado por participar. Se desejar, continue para a segunda etapa opcional abaixo —
+                ou termine por aqui: o seu voto principal já está guardado.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {showModalityStep && (
+          <ModalityVoteStep
+            modalities={modalitiesQuery.data ?? []}
+            entries={entries}
+            campaignId={campaign!.id}
+            cityId={city.id}
+            cityName={city.name}
+            categoryId={category.id}
+            categoryName={category.name}
+            campaignOpen={campaignOpen}
+            modalitiesLoading={modalitiesQuery.loading}
+            phase={modalityVoting.phase}
+            target={modalityVoting.target}
+            status={modalityVoting.status}
+            message={modalityVoting.message}
+            captchaToken={modalityVoting.captchaToken}
+            onCaptchaToken={modalityVoting.setCaptchaToken}
+            turnstileEnabled={votingSettings.data?.turnstileEnabled ?? false}
+            turnstileSiteKey={votingSettings.data?.turnstileSiteKey ?? ''}
+            onPick={modalityVoting.openConfirm}
+            onConfirm={modalityVoting.submit}
+            onCancel={modalityVoting.cancel}
+            onClose={modalityVoting.reset}
+            onDone={() => {
+              modalityVoting.reset();
+              if (scopeKey) setModalityDismissedScope(scopeKey);
+            }}
+          />
         )}
 
         <p className="mx-auto mt-10 max-w-2xl rounded-[14px] border border-white/[0.08] bg-white/[0.02] p-5 text-center text-[13px] leading-relaxed text-slate-500">

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Trophy, EyeOff, Medal, TrendingUp, TrendingDown, Minus, Download, SlidersHorizontal, CheckCircle2, AlertTriangle, X } from 'lucide-react';
+import { Trophy, EyeOff, Medal, TrendingUp, TrendingDown, Minus, Download, SlidersHorizontal, CheckCircle2, AlertTriangle, X, Sparkles } from 'lucide-react';
 import { useSiteConfig, useCities, useCategories } from '../../hooks/useDirectory';
 import { useAdminTally } from '../../hooks/useAdminVoteStats';
+import { useScopedModalities } from '../../hooks/useAdminData';
+import { useAdminModalityTally } from '../../hooks/useAdminModalityTally';
 import type { VoteAdjustmentTarget } from '../../hooks/useVoteAdjustments';
 import VoteAdjustmentModal from '../../components/VoteAdjustmentModal';
 import { supabase } from '../../lib/supabase';
@@ -45,6 +47,10 @@ export default function ResultsAdminPage() {
   const [cityId, setCityId] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [trends, setTrends] = useState<Record<string, Trend>>({});
+  // FASE 5C.3.9 — modalidade selecionada para o apuramento de destaques.
+  // Leitura EXCLUSIVA via get_admin_modality_tally (modality_votes); o
+  // resultado principal (get_admin_tally) permanece completamente separado.
+  const [modalityId, setModalityId] = useState('');
   // FASE 4F.2: modal de ajuste manual + feedback sucesso/erro.
   const [adjustTarget, setAdjustTarget] = useState<VoteAdjustmentTarget | null>(null);
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
@@ -77,6 +83,16 @@ export default function ResultsAdminPage() {
   const campaign = useMemo(() => effectiveCampaigns.find((c) => c.id === campaignId) ?? null, [effectiveCampaigns, campaignId]);
   // Phase 2/3: ranking via RPC segura get_admin_tally (is_admin() server-side).
   const tally = useAdminTally(campaignId, cityId, categoryId);
+  // FASE 5C.3.9 — modalidades da categoria no programa actual (só leitura de
+  // definições; sem programa válido → [] fail-closed) + apuramento por
+  // modalidade via RPC get_admin_modality_tally (só modality_votes).
+  const programIdForModalities = adminCtx ? (adminCtx.selectedProgramId ?? null) : null;
+  const modalitiesQuery = useScopedModalities(programIdForModalities, categoryId || null);
+  const modalitiesOfCategory = useMemo(
+    () => (modalitiesQuery.data ?? []).filter((m) => !categoryId || m.category_id === categoryId),
+    [modalitiesQuery.data, categoryId],
+  );
+  const modalityTally = useAdminModalityTally(campaignId, cityId, categoryId, modalityId);
 
   // Tendência: compara últimos 7 dias vs 7 dias anteriores por negócio (agregado, sem dados sensíveis).
   useEffect(() => {
@@ -159,6 +175,31 @@ export default function ResultsAdminPage() {
   const firstCount = ranked.filter((r) => r.position === 1).length;
   const cityName = cities.find((c) => c.id === cityId)?.name ?? '—';
   const categoryName = categories.find((c) => c.id === categoryId)?.name ?? '—';
+  // FASE 5C.3.9 — ranking por modalidade (empates partilham posição; sem
+  // ajustes: vote_adjustments NUNCA usado para modalidades; sem mistura com
+  // o resultado principal — totais lidos só de modality_votes via RPC).
+  const canQueryModality = Boolean(campaignId && cityId && categoryId && modalityId);
+  const modalityTotal = (modalityTally.data ?? []).reduce((s, r) => s + r.total_votes, 0);
+  const modalityRanked = (() => {
+    const sorted = [...(modalityTally.data ?? [])].sort(
+      (a, b) => b.total_votes - a.total_votes || a.business_name.localeCompare(b.business_name, 'pt-PT'),
+    );
+    let rank = 0;
+    let prev = -1;
+    return sorted.map((r, i) => {
+      if (r.total_votes !== prev) {
+        rank = i + 1;
+        prev = r.total_votes;
+      }
+      return {
+        ...r,
+        position: rank,
+        percentage: modalityTotal > 0 ? (r.total_votes / modalityTotal) * 100 : 0,
+      };
+    });
+  })();
+  const modalityName = modalitiesOfCategory.find((m) => m.id === modalityId)?.name ?? '—';
+  const modalityFirstCount = modalityRanked.filter((r) => r.position === 1).length;
 
   function openAdjustModal(row: RankedRow) {
     if (!canQuery) return;
@@ -214,6 +255,38 @@ export default function ResultsAdminPage() {
 
   const TrendIcon = ({ t }: { t: Trend }) =>
     t === 'up' ? <TrendingUp className="h-3.5 w-3.5 text-emerald-400" /> : t === 'down' ? <TrendingDown className="h-3.5 w-3.5 text-red-400" /> : <Minus className="h-3.5 w-3.5 text-slate-500" />;
+
+  // FASE 5C.3.9 — exportação agregada do apuramento por modalidade.
+  // Só totais por empresa (sem ip_hash/device, sem ajustes, sem mistura
+  // com o resultado principal).
+  async function exportModalityCsv() {
+    if (!canQueryModality || modalityRanked.length === 0) return;
+    const city = cities.find((c) => c.id === cityId);
+    const cat = categories.find((c) => c.id === categoryId);
+    const header = 'posicao;negocio;cidade;categoria;modalidade;edicao;total_votos;percentagem';
+    const lines = modalityRanked.map((r) => [
+      r.position,
+      `"${r.business_name.replace(/"/g, '""')}"`,
+      `"${(city?.name ?? '').replace(/"/g, '""')}"`,
+      `"${(cat?.name ?? '').replace(/"/g, '""')}"`,
+      `"${modalityName.replace(/"/g, '""')}"`,
+      campaign?.year ?? '',
+      r.total_votes,
+      r.percentage.toFixed(1).replace('.', ','),
+    ].join(';'));
+    const csv = [header, ...lines].join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `resultados-modalidade-${campaign?.year ?? 'edicao'}-${city?.slug ?? 'cidade'}-${cat?.slug ?? 'categoria'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    await audit('results.modality_export', 'campaigns', campaignId, {
+      city_id: cityId, category_id: categoryId, modality_id: modalityId,
+      rows: modalityRanked.length, total_votes: modalityTotal,
+    });
+  }
 
   return (
     <div>
@@ -398,6 +471,129 @@ export default function ResultsAdminPage() {
                   <Download className="h-4 w-4" /> Exportar CSV (agregado)
                 </button>
                 <span className="text-[11px] text-slate-500">A exportação inclui apenas totais agregados — sem IP, hashes de dispositivo ou dados de segurança.</span>
+              </div>
+            )}
+          </>
+        )}
+      </AdminCard>
+
+      {/* FASE 5C.3.9 — apuramento por modalidade (destaques).
+          Lê EXCLUSIVAMENTE via get_admin_modality_tally (modality_votes);
+          nunca soma com votes, nunca usa vote_adjustments, nunca altera o
+          resultado principal acima. Sem modalidade selecionada ou sem
+          edição × cidade × categoria → estado vazio fail-closed. */}
+      <AdminCard title="Apuramento por modalidade (destaques)" className="mt-4">
+        <div className="mb-4 flex items-start gap-3 rounded-xl border border-gold-500/20 bg-gold-500/[0.05] p-3.5 text-[13px] leading-relaxed text-slate-300">
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-gold-400" />
+          <p>
+            Cada modalidade tem votação própria e independente (1 voto por pessoa <em>em cada</em> modalidade).
+            Estes totais vêm só de <code className="font-mono text-xs text-gold-200">modality_votes</code> e{' '}
+            <strong className="text-white">não se somam</strong> ao resultado principal. Publicação pública de
+            modalidades: fase posterior — isto é apuramento interno.
+          </p>
+        </div>
+        <div className="mb-4 grid gap-4 sm:grid-cols-2">
+          <Field label="Modalidade (destaques da categoria)">
+            <Select
+              value={modalityId}
+              onChange={(e) => setModalityId(e.target.value)}
+              disabled={!categoryId || modalitiesQuery.loading}
+            >
+              <option value="" className="bg-navy-900">
+                {!categoryId
+                  ? '— Escolha primeiro a categoria —'
+                  : modalitiesQuery.loading
+                    ? '— A carregar modalidades… —'
+                    : modalitiesOfCategory.length === 0
+                      ? '— Sem modalidades nesta categoria —'
+                      : '— Escolher modalidade —'}
+              </option>
+              {modalitiesOfCategory.map((m) => (
+                <option key={m.id} value={m.id} className="bg-navy-900">
+                  {m.name}{m.active ? '' : ' (inactiva)'}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Âmbito">
+            <p className="rounded-xl border border-white/10 bg-navy-950/60 px-4 py-2.5 text-xs leading-relaxed text-slate-400">
+              {campaign?.year ?? '—'} · {cityName} · {categoryName} · {modalityRanked.length} {modalityRanked.length === 1 ? 'empresa' : 'empresas'} · {modalityTotal} {modalityTotal === 1 ? 'voto' : 'votos'} na modalidade
+            </p>
+          </Field>
+        </div>
+
+        {!canQueryModality ? (
+          <p className="rounded-xl border border-dashed border-white/15 py-8 text-center text-sm text-slate-500">
+            Escolha uma edição, cidade, categoria e modalidade para ver o apuramento de destaques.
+          </p>
+        ) : modalityTally.loading ? (
+          <PageLoading label="A apurar votos da modalidade…" />
+        ) : modalityTally.error ? (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-[13px] leading-relaxed"
+          >
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-300" />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-red-200">Não foi possível carregar o apuramento da modalidade.</p>
+              <p className="mt-1 break-words font-mono text-xs text-red-300/90">{modalityTally.error}</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            {modalityRanked.length > 0 && modalityFirstCount > 1 && (
+              <p className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-200">
+                <Medal className="h-3.5 w-3.5" /> Empate no 1.º lugar ({modalityFirstCount} empatados) — sem vencedor exclusivo.
+              </p>
+            )}
+            <AdminTable<(typeof modalityRanked)[number]>
+              rows={modalityRanked}
+              searchable
+              searchKeys={['business_name']}
+              searchPlaceholder="Pesquisar empresa…"
+              emptyMessage="Sem votos apurados nesta modalidade. A contagem preencher-se-á à medida que a votação decorre."
+              columns={[
+                {
+                  key: 'position', label: 'Posição',
+                  render: (r) => (
+                    <span className="inline-flex items-center gap-1.5 text-slate-300">
+                      {r.position === 1 && <Medal className="h-4 w-4 text-gold-400" />}
+                      {r.position}.º
+                    </span>
+                  ),
+                },
+                {
+                  key: 'business_name', label: 'Empresa',
+                  render: (r) => (
+                    <span className="font-medium text-white">{r.business_name}</span>
+                  ),
+                },
+                { key: 'city', label: 'Cidade', render: () => <span className="text-slate-300">{cityName}</span> },
+                { key: 'category', label: 'Categoria', render: () => <span className="text-slate-300">{categoryName}</span> },
+                { key: 'modality', label: 'Modalidade', render: () => <span className="text-slate-300">{modalityName}</span> },
+                { key: 'total_votes', label: 'Votos', render: (r) => <strong className="text-gold-300">{r.total_votes}</strong> },
+                {
+                  key: 'percentage', label: '%',
+                  render: (r) => (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-1.5 w-16 overflow-hidden rounded-full bg-white/10" aria-hidden>
+                        <span className="block h-full rounded-full bg-gold-gradient" style={{ width: `${Math.max(2, Math.min(100, r.percentage))}%` }} />
+                      </span>
+                      {r.percentage.toFixed(1).replace('.', ',')}%
+                    </span>
+                  ),
+                },
+              ]}
+            />
+            {modalityRanked.length > 0 && (
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  onClick={exportModalityCsv}
+                  className="inline-flex items-center gap-2 rounded-lg border border-white/15 px-4 py-2 text-sm text-slate-300 transition hover:border-gold-500/50 hover:text-gold-300"
+                >
+                  <Download className="h-4 w-4" /> Exportar CSV (modalidade)
+                </button>
+                <span className="text-[11px] text-slate-500">A exportação inclui apenas totais agregados da modalidade — sem IP, hashes de dispositivo, ajustes ou dados de segurança.</span>
               </div>
             )}
           </>
