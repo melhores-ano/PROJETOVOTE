@@ -13,7 +13,8 @@
  * SEM seeds: nenhuma modalidade é criada automaticamente.
  */
 import { useMemo, useState } from 'react';
-import { Pencil, Plus } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Pencil, Plus, BadgeCheck } from 'lucide-react';
 import { useScopedCategories, useScopedDistinctions, useScopedModalities } from '../../hooks/useAdminData';
 import { useAdminProgram } from '../../hooks/useAdminProgram';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
@@ -282,7 +283,7 @@ export default function ModalitiesAdminPage() {
                     key: 'actions',
                     label: 'Acções',
                     render: (r) => (
-                      <span className="flex gap-2">
+                      <span className="flex flex-wrap gap-2">
                         <button
                           onClick={() => openEdit(r as unknown as AwardModality)}
                           className="inline-flex items-center gap-1 rounded-lg border border-white/15 px-2.5 py-1 text-xs text-slate-300 hover:border-gold-500/50 hover:text-gold-300"
@@ -296,6 +297,14 @@ export default function ModalitiesAdminPage() {
                         >
                           {Boolean(r.active) ? 'Desactivar' : 'Activar'}
                         </button>
+                        {/* FASE 5C.3.10 — acesso operacional (só leitura de contagem
+                            aqui; o pipeline comercial vive em Admin → Distinções). */}
+                        <Link
+                          to={`/admin/distincoes?modality=${String((r as unknown as AwardModality).id)}`}
+                          className="inline-flex items-center gap-1 rounded-lg border border-gold-500/40 bg-gold-500/10 px-2.5 py-1 text-xs font-semibold text-gold-200 hover:bg-gold-500/20"
+                        >
+                          <BadgeCheck className="h-3 w-3" /> Ver distinções
+                        </Link>
                       </span>
                     ),
                   },

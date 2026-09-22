@@ -54,6 +54,7 @@ const CampaignsPage = lazy(() => import('./pages/admin/CampaignsPage'));
 const CitiesAdminPage = lazy(() => import('./pages/admin/CitiesAdminPage'));
 const CategoriesAdminPage = lazy(() => import('./pages/admin/CategoriesAdminPage'));
 const ModalitiesAdminPage = lazy(() => import('./pages/admin/ModalitiesAdminPage'));
+const DistinctionsAdminPage = lazy(() => import('./pages/admin/DistinctionsAdminPage'));
 const BusinessesAdminPage = lazy(() => import('./pages/admin/BusinessesAdminPage'));
 const EntriesAdminPage = lazy(() => import('./pages/admin/EntriesAdminPage'));
 const CsvImportPage = lazy(() => import('./pages/admin/CsvImportPage'));
@@ -141,6 +142,7 @@ function AppRoutes() {
         <Route path="admin/cidades" element={withMeta(<CitiesAdminPage />, 'Administração — Cidades')} />
         <Route path="admin/categorias" element={withMeta(<CategoriesAdminPage />, 'Administração — Categorias')} />
         <Route path="admin/modalidades" element={withMeta(<ModalitiesAdminPage />, 'Administração — Modalidades')} />
+        <Route path="admin/distincoes" element={withMeta(<DistinctionsAdminPage />, 'Administração — Distinções')} />
         <Route path="admin/empresas" element={withMeta(<BusinessesAdminPage />, 'Administração — Empresas')} />
         <Route path="admin/participantes" element={withMeta(<EntriesAdminPage />, 'Administração — Participantes')} />
         <Route path="admin/importar" element={withMeta(<CsvImportPage />, 'Administração — Importação CSV')} />

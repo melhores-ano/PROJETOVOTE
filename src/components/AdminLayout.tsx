@@ -2,7 +2,7 @@ import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Megaphone, MapPin, Tags, Store, Users,
   BarChart3, ShieldAlert, Settings, LogOut, Trophy, Handshake, KeyRound,
-  Upload, ScrollText, Medal,
+  Upload, ScrollText, Medal, BadgeCheck,
 } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/AuthContext';
@@ -29,6 +29,7 @@ const ITEMS: NavItem[] = [
   { to: '/admin/cidades', label: 'Cidades', icon: MapPin },
   { to: '/admin/categorias', label: 'Categorias', icon: Tags },
   { to: '/admin/modalidades', label: 'Modalidades', icon: Medal },
+  { to: '/admin/distincoes', label: 'Distinções', icon: BadgeCheck },
   { to: '/admin/empresas', label: 'Empresas', icon: Store },
   { to: '/admin/participantes', label: 'Participantes', icon: Users },
   { to: '/admin/importar', label: 'Importar CSV', icon: Upload },

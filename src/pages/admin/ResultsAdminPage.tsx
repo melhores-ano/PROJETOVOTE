@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Trophy, EyeOff, Medal, TrendingUp, TrendingDown, Minus, Download, SlidersHorizontal, CheckCircle2, AlertTriangle, X, Sparkles } from 'lucide-react';
+import { Trophy, EyeOff, Medal, TrendingUp, TrendingDown, Minus, Download, SlidersHorizontal, CheckCircle2, AlertTriangle, X, Sparkles, BadgeCheck } from 'lucide-react';
 import { useSiteConfig, useCities, useCategories } from '../../hooks/useDirectory';
 import { useAdminTally } from '../../hooks/useAdminVoteStats';
 import { useScopedModalities } from '../../hooks/useAdminData';
 import { useAdminModalityTally } from '../../hooks/useAdminModalityTally';
+import { createDistinction } from '../../lib/distinctions';
 import type { VoteAdjustmentTarget } from '../../hooks/useVoteAdjustments';
 import VoteAdjustmentModal from '../../components/VoteAdjustmentModal';
 import { supabase } from '../../lib/supabase';
 import { audit } from '../../lib/audit';
 import { AdminHeader, AdminCard, AdminTable, SupabaseNotice } from '../../components/admin';
-import { Select, Field } from '../../components/AdminForm';
+import { Select, Field, Modal, FormError } from '../../components/AdminForm';
 import { useOptionalAdminProgram } from '../../hooks/useAdminProgram';
 import { PageLoading } from '../../components/ui';
 import type { Campaign } from '../../types/database';
@@ -54,6 +55,19 @@ export default function ResultsAdminPage() {
   // FASE 4F.2: modal de ajuste manual + feedback sucesso/erro.
   const [adjustTarget, setAdjustTarget] = useState<VoteAdjustmentTarget | null>(null);
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
+  // FASE 5C.3.10 — criar distinção a partir do resultado de modalidade.
+  // Origem default: modality_vote. award_status inicial = selected,
+  // commercial_status inicial = pending. Nunca copia votos; nunca altera
+  // votes / vote_attempts / vote_adjustments / modality_votes.
+  const [existingDistinctions, setExistingDistinctions] = useState<Set<string>>(new Set());
+  const [distinctionTarget, setDistinctionTarget] = useState<{
+    business_id: string;
+    business_name: string;
+    position: number;
+    total_votes: number;
+  } | null>(null);
+  const [creatingDistinction, setCreatingDistinction] = useState(false);
+  const [distinctionFeedback, setDistinctionFeedback] = useState<string | null>(null);
 
   function showToast(kind: 'success' | 'error', message: string) {
     setToast({ kind, message });
@@ -131,6 +145,65 @@ export default function ResultsAdminPage() {
     })();
     return () => { cancelled = true; };
   }, [campaignId, cityId, categoryId]);
+
+  // FASE 5C.3.10 — distinções já criadas no âmbito atual
+  // (campanha × cidade × categoria × modalidade) para alternar
+  // "Criar distinção" ↔ "Distinção criada" + "Gerir distinção".
+  // Só leitura de award_distinctions; nunca escreve em votos.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setExistingDistinctions(new Set());
+      if (!supabase || !campaignId || !cityId || !categoryId || !modalityId) return;
+      try {
+        const { data, error } = await supabase
+          .from('award_distinctions')
+          .select('business_id')
+          .eq('campaign_id', campaignId)
+          .eq('city_id', cityId)
+          .eq('category_id', categoryId)
+          .eq('modality_id', modalityId)
+          .limit(1000);
+        if (error) throw error;
+        if (!cancelled) {
+          setExistingDistinctions(
+            new Set(((data ?? []) as { business_id: string }[]).map((d) => d.business_id)),
+          );
+        }
+      } catch {
+        if (!cancelled) setExistingDistinctions(new Set());
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [campaignId, cityId, categoryId, modalityId]);
+
+  async function handleCreateDistinction() {
+    setDistinctionFeedback(null);
+    if (!distinctionTarget || !campaignId || !cityId || !categoryId || !modalityId) return;
+    setCreatingDistinction(true);
+    try {
+      const result = await createDistinction({
+        campaign_id: campaignId,
+        city_id: cityId,
+        category_id: categoryId,
+        modality_id: modalityId,
+        business_id: distinctionTarget.business_id,
+        position: distinctionTarget.position,
+        source: 'modality_vote',
+      });
+      if (result.duplicate) {
+        setDistinctionFeedback('Esta empresa já possui uma distinção nesta modalidade.');
+      } else {
+        setExistingDistinctions((prev) => new Set(prev).add(distinctionTarget.business_id));
+        setDistinctionTarget(null);
+        showToast('success', `Distinção criada para ${distinctionTarget.business_name} (mérito: Selecionado, comercial: Pendente).`);
+      }
+    } catch (e) {
+      setDistinctionFeedback(e instanceof Error ? e.message : 'Falha ao criar a distinção.');
+    } finally {
+      setCreatingDistinction(false);
+    }
+  }
 
   if (config.loading) return <PageLoading label="A carregar resultados…" />;
 
@@ -583,6 +656,40 @@ export default function ResultsAdminPage() {
                     </span>
                   ),
                 },
+                {
+                  key: 'distinction', label: 'Distinção',
+                  render: (r) => (
+                    existingDistinctions.has(r.business_id) ? (
+                      <span className="flex flex-col gap-1.5">
+                        <span className="inline-flex w-fit items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-200">
+                          <BadgeCheck className="h-3 w-3" /> Distinção criada
+                        </span>
+                        <Link
+                          to={`/admin/distincoes?city=${cityId}&category=${categoryId}&modality=${modalityId}&business=${encodeURIComponent(r.business_name)}`}
+                          className="text-[11px] font-medium text-gold-300 underline hover:text-gold-200"
+                        >
+                          Gerir distinção
+                        </Link>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setDistinctionFeedback(null);
+                          setDistinctionTarget({
+                            business_id: r.business_id,
+                            business_name: r.business_name,
+                            position: r.position,
+                            total_votes: r.total_votes,
+                          });
+                        }}
+                        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-gold-500/40 bg-gold-500/10 px-3 py-1.5 text-xs font-semibold text-gold-200 transition hover:bg-gold-500/20 active:scale-[0.98]"
+                      >
+                        <BadgeCheck className="h-3.5 w-3.5" />
+                        Criar distinção
+                      </button>
+                    )
+                  ),
+                },
               ]}
             />
             {modalityRanked.length > 0 && (
@@ -607,6 +714,58 @@ export default function ResultsAdminPage() {
           onClose={() => setAdjustTarget(null)}
           onSuccess={handleAdjustmentSuccess}
         />
+      )}
+
+      {/* FASE 5C.3.10 — confirmação de criação de distinção a partir do
+          resultado de modalidade. Defaults: source = modality_vote,
+          award_status = selected, commercial_status = pending, notes = NULL.
+          NÃO copia votos para award_distinctions; posição/votos só leitura
+          via get_admin_modality_tally. */}
+      {distinctionTarget && (
+        <Modal title="Criar distinção a partir do resultado" onClose={() => (creatingDistinction ? null : setDistinctionTarget(null))}>
+          <div className="space-y-3 text-sm">
+            <FormError message={distinctionFeedback} />
+            <dl className="grid grid-cols-2 gap-2 text-[13px]">
+              <dt className="text-slate-500">Empresa</dt>
+              <dd className="font-semibold text-white">{distinctionTarget.business_name}</dd>
+              <dt className="text-slate-500">Cidade</dt>
+              <dd className="text-slate-200">{cityName}</dd>
+              <dt className="text-slate-500">Categoria</dt>
+              <dd className="text-slate-200">{categoryName}</dd>
+              <dt className="text-slate-500">Modalidade</dt>
+              <dd className="text-slate-200">{modalityName}</dd>
+              <dt className="text-slate-500">Posição</dt>
+              <dd className="text-slate-200">{distinctionTarget.position}.º (via get_admin_modality_tally)</dd>
+              <dt className="text-slate-500">Votos</dt>
+              <dd className="text-slate-200">{distinctionTarget.total_votes} (só leitura — não copiados)</dd>
+              <dt className="text-slate-500">Origem</dt>
+              <dd className="text-slate-200">Voto de modalidade (modality_vote)</dd>
+            </dl>
+            <p className="rounded-xl border border-white/10 bg-navy-950/60 px-3.5 py-2.5 text-xs text-slate-400">
+              Será criada com mérito <strong className="text-white">Selecionado</strong> e
+              comercial <strong className="text-white">Pendente</strong>, sem copiar votos
+              e sem alterar o resultado oficial.
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setDistinctionTarget(null)}
+                disabled={creatingDistinction}
+                className="rounded-xl border border-white/15 px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateDistinction}
+                disabled={creatingDistinction}
+                className="rounded-xl bg-gold-gradient px-6 py-2.5 text-sm font-semibold text-navy-950 shadow-award transition hover:brightness-110 disabled:opacity-50"
+              >
+                {creatingDistinction ? 'A criar…' : 'Confirmar criação'}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
