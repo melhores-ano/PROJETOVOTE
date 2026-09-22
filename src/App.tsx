@@ -45,6 +45,7 @@ const AboutPage = lazy(() => import('./pages/public/AboutPage'));
 const RulesPage = lazy(() => import('./pages/public/RulesPage'));
 const PrivacyPage = lazy(() => import('./pages/public/PrivacyPage'));
 const ContactPage = lazy(() => import('./pages/public/ContactPage'));
+const VerifyPage = lazy(() => import('./pages/public/VerifyPage'));
 const MaintenancePage = lazy(() => import('./pages/public/MaintenancePage'));
 const NotFoundPage = lazy(() => import('./pages/public/NotFoundPage'));
 
@@ -171,6 +172,9 @@ function AppRoutes() {
           <Route path="regulamento" element={withMeta(<RulesPage />, 'Regulamento', 'As regras oficiais que garantem uma votação justa em todas as cidades.', programPaths.rules(PT))} />
           <Route path="privacidade" element={withMeta(<PrivacyPage />, 'Política de Privacidade', 'Como protegemos os dados de quem vota, participa e administra.', programPaths.privacy(PT))} />
           <Route path="contactos" element={withMeta(<ContactPage />, 'Contactos', 'Fale com a organização dos Melhores do Ano Portugal.', programPaths.contact(PT))} />
+          {/* FASE 5C.3.13 — verificação pública de certificados/selos (program-aware, fail-closed). */}
+          <Route path="verificar" element={withMeta(<VerifyPage />, 'Verificar certificado ou selo', 'Verifique a autenticidade de um certificado ou selo digital The Best Europa.', programPaths.verify(PT))} />
+          <Route path="verificar/:verificationCode" element={withMeta(<VerifyPage />, 'Verificar certificado ou selo', 'Verifique a autenticidade de um certificado ou selo digital The Best Europa.')} />
           {/* Rotas de compatibilidade sob o prefixo (padrão antigo) */}
           <Route path=":citySlug" element={withMeta(<CityPage />, 'Cidade participante')} />
           <Route path=":citySlug/:categorySlug" element={withMeta(<CategoryPage />, 'Categoria a concurso')} />

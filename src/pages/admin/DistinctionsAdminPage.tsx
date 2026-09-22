@@ -38,6 +38,7 @@ import {
   useScopedBusinesses,
   useScopedCategories,
   useScopedCities,
+  useScopedCredentials,
   useScopedDistinctions,
   useScopedFulfillment,
   useScopedModalities,
@@ -74,10 +75,21 @@ import {
   summarizeFulfillment,
   updateFulfillmentItem,
 } from '../../lib/fulfillment';
+import {
+  DIGITAL_CREDENTIAL_STATUS_LABELS,
+  DIGITAL_CREDENTIAL_TYPE_LABELS,
+  activeCredential,
+  credentialHistory,
+  issueCredential,
+  revokeCredential,
+  verificationUrl,
+} from '../../lib/digitalCredentials';
 import type {
   AwardDistinction,
   AwardStatus,
   CommercialStatus,
+  DigitalCredential,
+  DigitalCredentialType,
   DistinctionFulfillment,
   FulfillmentDeliveryMethod,
   FulfillmentItemType,
@@ -434,6 +446,276 @@ function FulfillmentManager({
   );
 }
 
+/* ---------------------------------------------------------------------------
+ * FASE 5C.3.13 — Gestor de credenciais verificáveis (modal por distinção).
+ * Para certificate + digital_seal: GERAR CREDENCIAL (valida programa,
+ * campanha, distinção, fulfillment correspondente e elegibilidade; gera
+ * código seguro TBE-PT-<ANO>-…; persiste; audita) / VERIFICAR (abre rota
+ * pública) / REVOGAR (confirmação explícita + motivo obrigatório;
+ * preserva registo, nunca DELETE). NÃO altera award_status,
+ * commercial_status, fulfillment status, votos, ranking ou resultados —
+ * só UI de aviso quando fora do fluxo habitual. Fail-closed: sem edição
+ * válida → escrita bloqueada.
+ * ------------------------------------------------------------------------- */
+
+const CREDENTIAL_TYPES: DigitalCredentialType[] = ['certificate', 'digital_seal'];
+
+function CredentialManager({
+  distinction,
+  businessName,
+  credentials,
+  fulfillmentItems,
+  campaignYear,
+  hasCampaign,
+  onChanged,
+  onClose,
+}: {
+  distinction: AwardDistinction;
+  businessName: string;
+  credentials: DigitalCredential[];
+  fulfillmentItems: DistinctionFulfillment[];
+  campaignYear: number | null;
+  hasCampaign: boolean;
+  onChanged: () => void;
+  onClose: () => void;
+}) {
+  const [busy, setBusy] = useState<DigitalCredentialType | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<DigitalCredential | null>(null);
+  const [revokeReason, setRevokeReason] = useState('');
+  const [revoking, setRevoking] = useState(false);
+
+  const fulfillmentByType = useMemo(() => {
+    const m = new Map<FulfillmentItemType, DistinctionFulfillment>();
+    for (const it of fulfillmentItems) m.set(it.item_type, it);
+    return m;
+  }, [fulfillmentItems]);
+
+  const eligibilityHint = fulfillmentEligibilityHint(distinction);
+
+  async function handleIssue(t: DigitalCredentialType) {
+    setError(null);
+    setInfo(null);
+    if (!hasCampaign) {
+      setError('Sem edição válida — emissão bloqueada (fail-closed).');
+      return;
+    }
+    setBusy(t);
+    try {
+      const fulfillment = fulfillmentByType.get(t as FulfillmentItemType) ?? null;
+      const { duplicate } = await issueCredential(
+        {
+          award_distinction_id: distinction.id,
+          credential_type: t,
+          fulfillment_id: fulfillment?.id ?? null,
+          countryCode: 'PT',
+          year: campaignYear ?? new Date().getFullYear(),
+        },
+        distinction,
+      );
+      if (duplicate) {
+        setInfo(
+          `Já existe ${DIGITAL_CREDENTIAL_TYPE_LABELS[t]} emitido para esta distinção. Revogue o atual antes de gerar um novo.`,
+        );
+      } else {
+        setInfo(`${DIGITAL_CREDENTIAL_TYPE_LABELS[t]} emitido. Mérito, relação comercial, reconhecimento, votos e ranking inalterados.`);
+      }
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao gerar a credencial.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRevokeConfirm() {
+    if (!revokeTarget) return;
+    const motive = revokeReason.trim();
+    if (motive === '') {
+      setError('Motivo da revogação obrigatório.');
+      return;
+    }
+    setError(null);
+    setRevoking(true);
+    try {
+      await revokeCredential(revokeTarget, motive, {
+        award_distinction_id: distinction.id,
+        credential_type: revokeTarget.credential_type,
+        verification_code: revokeTarget.verification_code,
+      });
+      setInfo('Credencial revogada. O registo foi preservado para histórico.');
+      setRevokeTarget(null);
+      setRevokeReason('');
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao revogar a credencial.');
+    } finally {
+      setRevoking(false);
+    }
+  }
+
+  return (
+    <Modal title={`Credenciais verificáveis — ${businessName}`} onClose={onClose} wide>
+      <div className="space-y-4">
+        <FormError message={error} />
+        {info && (
+          <p role="status" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2.5 text-xs text-emerald-200">
+            {info}
+          </p>
+        )}
+        {eligibilityHint && (
+          <p role="note" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs leading-relaxed text-amber-200">
+            {eligibilityHint} A emissão é apenas reconhecimento verificável e nunca altera os outros estados.
+          </p>
+        )}
+        <p className="rounded-xl border border-white/10 bg-navy-950/60 px-3.5 py-2.5 text-xs leading-relaxed text-slate-400">
+          Cada ativo emitido possui código único não previsível (formato{' '}
+          <span className="font-mono text-gold-300">TBE-PT-AAAA-…</span>). A emissão reconhece a
+          distinção existente — não cria mérito, não altera votos, ranking, mérito, relação comercial
+          nem o reconhecimento configurado.
+        </p>
+        <div className="space-y-3">
+          {CREDENTIAL_TYPES.map((t) => {
+            const active = activeCredential(credentials, t);
+            const history = credentialHistory(credentials, t);
+            const revoked = history.filter((c) => c.status === 'revoked');
+            const fulfillment = fulfillmentByType.get(t as FulfillmentItemType) ?? null;
+            return (
+              <fieldset key={t} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-white">{DIGITAL_CREDENTIAL_TYPE_LABELS[t]}</span>
+                  {!active && revoked.length === 0 && (
+                    <span className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-2.5 py-0.5 text-[11px] font-semibold text-slate-300">
+                      Não emitido
+                    </span>
+                  )}
+                  {active && (
+                    <span className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-200">
+                      {DIGITAL_CREDENTIAL_STATUS_LABELS.issued}
+                    </span>
+                  )}
+                  {!active && revoked.length > 0 && (
+                    <span className="inline-flex items-center rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-red-200">
+                      {DIGITAL_CREDENTIAL_STATUS_LABELS.revoked}
+                    </span>
+                  )}
+                  {!fulfillment && (
+                    <span className="text-[11px] text-slate-500">(sem item de reconhecimento configurado — a emissão continua possível e não o altera)</span>
+                  )}
+                </div>
+                {active && (
+                  <div className="mt-3 rounded-xl border border-white/10 bg-navy-950/60 px-3.5 py-2.5 text-xs leading-relaxed">
+                    <p>
+                      <span className="text-slate-500">Código: </span>
+                      <span className="font-mono font-bold text-gold-300">{active.verification_code}</span>
+                    </p>
+                    <p className="mt-1 text-slate-400">
+                      Data de emissão: {new Date(active.issued_at).toLocaleString('pt-PT')}
+                    </p>
+                  </div>
+                )}
+                {revoked.length > 0 && (
+                  <p className="mt-2 text-[11px] text-slate-500">
+                    Histórico preservado: {revoked.length} {revoked.length === 1 ? 'revogada' : 'revogadas'} (registos mantidos, nunca apagados).
+                  </p>
+                )}
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {!active && (
+                    <button
+                      type="button"
+                      onClick={() => handleIssue(t)}
+                      disabled={!hasCampaign || busy !== null}
+                      title={`Gerar credencial (${DIGITAL_CREDENTIAL_TYPE_LABELS[t]})`}
+                      className="inline-flex items-center gap-1 rounded-lg border border-gold-500/40 bg-gold-500/10 px-2.5 py-1 text-xs font-semibold text-gold-300 transition hover:bg-gold-500/20 disabled:opacity-40"
+                    >
+                      {busy === t ? 'A gerar…' : 'Gerar credencial'}
+                    </button>
+                  )}
+                  {active && (
+                    <>
+                      <a
+                        href={`#/pt/verificar/${active.verification_code}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Verificar (abre a rota pública)"
+                        className="inline-flex items-center gap-1 rounded-lg border border-teal-500/40 bg-teal-500/10 px-2.5 py-1 text-xs font-semibold text-teal-200 transition hover:bg-teal-500/20"
+                      >
+                        Verificar
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRevokeTarget(active);
+                          setRevokeReason('');
+                          setError(null);
+                        }}
+                        disabled={!hasCampaign}
+                        title={`Revogar ${DIGITAL_CREDENTIAL_TYPE_LABELS[t]}`}
+                        className="inline-flex items-center gap-1 rounded-lg border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-200 transition hover:bg-red-500/20 disabled:opacity-40"
+                      >
+                        Revogar
+                      </button>
+                    </>
+                  )}
+                </div>
+              </fieldset>
+            );
+          })}
+        </div>
+        {revokeTarget && (
+          <div role="dialog" aria-label="Confirmar revogação" className="rounded-2xl border border-red-500/30 bg-red-500/[0.06] p-4">
+            <p className="text-sm font-semibold text-red-200">
+              Confirmar revogação — {DIGITAL_CREDENTIAL_TYPE_LABELS[revokeTarget.credential_type]}
+            </p>
+            <p className="mt-1 font-mono text-xs text-slate-300">{revokeTarget.verification_code}</p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-400">
+              A revogação preserva o registo para histórico (nunca apaga). O motivo é administrativo e
+              nunca será exposto na verificação pública.
+            </p>
+            <label htmlFor="revoke-reason" className="mt-3 block text-xs font-semibold text-slate-300">
+              Motivo da revogação (obrigatório)
+            </label>
+            <textarea
+              id="revoke-reason"
+              value={revokeReason}
+              onChange={(e) => setRevokeReason(e.target.value)}
+              rows={3}
+              placeholder="Ex.: código emitido para distinção incorreta"
+              className="mt-1 w-full rounded-xl border border-white/15 bg-navy-950 px-3.5 py-2.5 text-sm text-white placeholder:text-slate-600 focus:border-red-500/60 focus:outline-none"
+            />
+            <div className="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setRevokeTarget(null);
+                  setRevokeReason('');
+                }}
+                disabled={revoking}
+                className="rounded-xl border border-white/15 px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleRevokeConfirm}
+                disabled={revoking || revokeReason.trim() === ''}
+                className="rounded-xl border border-red-500/50 bg-red-500/20 px-6 py-2.5 text-sm font-semibold text-red-100 transition hover:bg-red-500/30 disabled:opacity-50"
+              >
+                {revoking ? 'A revogar…' : 'Confirmar revogação'}
+              </button>
+            </div>
+          </div>
+        )}
+        <p className="text-[11px] leading-relaxed text-slate-500">
+          URL verificável (para futuro QR): <span className="font-mono">/pt/verificar/CÓDIGO</span> —{' '}
+          {verificationUrl('pt', 'TBE-PT-2026-EXEMPLO')}.
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
 export default function DistinctionsAdminPage() {
   const {
     selectedProgram,
@@ -489,6 +771,9 @@ export default function DistinctionsAdminPage() {
 
   // FASE 5C.3.12 — reconhecimento/entrega (quarta dimensão, independente).
   const [fulfillmentTarget, setFulfillmentTarget] = useState<AwardDistinction | null>(null);
+
+  // FASE 5C.3.13 — credenciais verificáveis (certificado/selo).
+  const [credentialTarget, setCredentialTarget] = useState<AwardDistinction | null>(null);
 
   const [rowError, setRowError] = useState<string | null>(null);
   const [busyRowId, setBusyRowId] = useState<string | null>(null);
@@ -676,6 +961,16 @@ export default function DistinctionsAdminPage() {
     const all: DistinctionFulfillment[] = Object.values(fulfillmentByDistinction).flat();
     return summarizeFulfillment(all);
   }, [fulfillmentByDistinction]);
+
+  // FASE 5C.3.13 — mapa distinção → credenciais verificáveis.
+  // Isolado por campanha/programa porque os IDs vêm de `distinctions`
+  // (já filtradas por selectedCampaignId + programa). Fail-closed: sem
+  // distinções → {} (hook retorna vazio, nunca global).
+  const credentialsQuery = useScopedCredentials(distinctionIds);
+  const credentialsByDistinction = useMemo(
+    () => credentialsQuery.data ?? {},
+    [credentialsQuery.data],
+  );
 
   const loading =
     citiesQuery.loading ||
@@ -1184,6 +1479,50 @@ export default function DistinctionsAdminPage() {
                     },
                   },
                   {
+                    key: 'credentials',
+                    label: 'Credenciais',
+                    render: (r) => {
+                      const d = r as unknown as AwardDistinction;
+                      const creds = credentialsByDistinction[d.id] ?? [];
+                      const cert = activeCredential(creds, 'certificate');
+                      const seal = activeCredential(creds, 'digital_seal');
+                      const revokedCount = creds.filter((c) => c.status === 'revoked').length;
+                      const row = (t: DigitalCredentialType, label: string, c: DigitalCredential | null) => (
+                        <span key={t} className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                          <span className="font-semibold text-slate-300">{label}:</span>
+                          {!c && revokedCount === 0 && (
+                            <span className="text-slate-500">Não emitido</span>
+                          )}
+                          {!c && revokedCount > 0 && (
+                            <span className="text-red-300">Revogado</span>
+                          )}
+                          {c && (
+                            <span className="font-mono text-gold-300" title={`Emitido em ${new Date(c.issued_at).toLocaleString('pt-PT')}`}>
+                              {c.verification_code}
+                            </span>
+                          )}
+                        </span>
+                      );
+                      return (
+                        <span className="flex min-w-44 flex-col gap-1.5">
+                          {row('certificate', 'Certificado', cert)}
+                          {row('digital_seal', 'Selo digital', seal)}
+                          <span className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setCredentialTarget(d)}
+                              disabled={!hasCampaign}
+                              title={creds.length > 0 ? 'Ver credenciais' : 'Gerar credencial'}
+                              className="inline-flex items-center gap-1 rounded-lg border border-gold-500/40 bg-gold-500/10 px-2.5 py-1 text-xs font-semibold text-gold-300 transition hover:bg-gold-500/20 disabled:opacity-40"
+                            >
+                              {creds.length > 0 ? 'Ver credenciais' : 'Gerar credencial'}
+                            </button>
+                          </span>
+                        </span>
+                      );
+                    },
+                  },
+                  {
                     key: 'notes',
                     label: 'Notas',
                     render: (r) => {
@@ -1322,6 +1661,24 @@ export default function DistinctionsAdminPage() {
             fulfillmentQuery.refetch();
           }}
           onClose={() => setFulfillmentTarget(null)}
+        />
+      )}
+
+      {/* FASE 5C.3.13 — emitir/revogar credenciais verificáveis (certificado,
+          selo). Escreve SOMENTE em digital_credentials; nunca altera mérito,
+          comercial, fulfillment, votos, ranking ou resultados públicos. */}
+      {credentialTarget && (
+        <CredentialManager
+          distinction={credentialTarget}
+          businessName={businessById.get(credentialTarget.business_id)?.name ?? 'empresa'}
+          credentials={credentialsByDistinction[credentialTarget.id] ?? []}
+          fulfillmentItems={fulfillmentByDistinction[credentialTarget.id] ?? []}
+          campaignYear={selectedCampaign?.year ?? null}
+          hasCampaign={hasCampaign}
+          onChanged={() => {
+            credentialsQuery.refetch();
+          }}
+          onClose={() => setCredentialTarget(null)}
         />
       )}
     </div>

@@ -107,4 +107,8 @@ export const programPaths = {
   privacy: (prefix: string): string => buildProgramPath(prefix, '/privacidade'),
   contact: (prefix: string): string => buildProgramPath(prefix, '/contactos'),
   notFound: (prefix: string): string => buildProgramPath(prefix, '/404'),
+  /** FASE 5C.3.13 — verificação pública de certificados/selos. */
+  verify: (prefix: string): string => buildProgramPath(prefix, '/verificar'),
+  verifyCode: (prefix: string, code: string): string =>
+    buildProgramPath(prefix, `/verificar/${code.trim().toUpperCase()}`),
 };

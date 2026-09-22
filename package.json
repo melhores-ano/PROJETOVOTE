@@ -14,6 +14,8 @@
     "verify:5c39": "node scripts/verify-phase5c39.mjs",
     "verify:5c310": "node scripts/verify-phase5c310.mjs",
     "verify:5c311": "node scripts/verify-phase5c311.mjs",
+    "verify:5c312": "node scripts/verify-phase5c312.mjs",
+    "verify:5c313": "node scripts/verify-phase5c313.mjs",
     "backend:apply": "node scripts/apply-migrations.mjs",
     "backend:verify": "node scripts/verify-real-backend.mjs",
     "backend:test-vote": "node scripts/test-real-voting.mjs",

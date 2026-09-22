@@ -386,6 +386,41 @@ export interface DistinctionFulfillment {
   updated_at: string;
 }
 
+/**
+ * FASE 5C.3.13 — Certificados e selos digitais verificáveis.
+ * REGRA INEGOCIÁVEL: a emissão reconhece uma distinção existente — NÃO cria
+ * mérito. Emissão/revogação altera SOMENTE digital_credentials — NUNCA
+ * award_status, commercial_status, fulfillment status, votos, ranking,
+ * posição, vencedor ou resultados públicos. Código TBE-PT-<ANO>-<12A-Z0-9>
+ * UNIQUE não previsível. Revogar preserva o registo (nunca DELETE); o motivo
+ * é administrativo e nunca público. Verificação pública SOMENTE via RPC
+ * verify_digital_credential (retorno controlado, fail-closed).
+ * Persistência: public.digital_credentials (migration 0017, local).
+ */
+export type DigitalCredentialType =
+  | 'certificate'
+  | 'digital_seal';
+
+export type DigitalCredentialStatus =
+  | 'issued'
+  | 'revoked';
+
+/** FASE 5C.3.13: ativo digital emitido (digital_credentials). */
+export interface DigitalCredential {
+  id: string;
+  award_distinction_id: string;
+  fulfillment_id: string | null;
+  credential_type: DigitalCredentialType;
+  verification_code: string;
+  status: DigitalCredentialStatus;
+  issued_at: string;
+  revoked_at: string | null;
+  revocation_reason: string | null;
+  created_at: string;
+  updated_at: string;
+  metadata: Record<string, unknown> | null;
+}
+
 /** Configuração agregada do sítio (lida a partir de site_settings) */
 export interface SiteConfig {
   siteName: string;

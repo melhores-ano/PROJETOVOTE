@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { belongsToCountry, belongsToProgram, isSponsorVisible } from '../lib/awardProgram';
 import { fallbackBusinesses, fallbackCategories, fallbackCities } from '../data/fallback';
-import type { AuditLog, AwardDistinction, AwardModality, Business, Category, City, DistinctionFulfillment, Profile, Sponsor, VoteAttemptOutcome } from '../types/database';
+import type { AuditLog, AwardDistinction, AwardModality, Business, Category, City, DigitalCredential, DistinctionFulfillment, Profile, Sponsor, VoteAttemptOutcome } from '../types/database';
 
 /** Indica se os dados são reais (Supabase) ou de demonstração local. */
 export const isLive = isSupabaseConfigured;
@@ -518,6 +518,54 @@ export function useScopedFulfillment(
       }
       const out: Record<string, DistinctionFulfillment[]> = {};
       for (const row of (data ?? []) as DistinctionFulfillment[]) {
+        (out[row.award_distinction_id] ??= []).push(row);
+      }
+      return out;
+    },
+    {},
+    [key],
+  );
+}
+
+/* ---------- FASE 5C.3.13 — credenciais verificáveis por distinção ----------
+ * Lê digital_credentials (migration 0017) SEMPRE filtrado pelas distinções
+ * da campanha/programa selecionados (fail-closed: sem distinções → {}).
+ * Mapa distinção → credenciais. NUNCA lê nem escreve em votes /
+ * vote_attempts / vote_adjustments / modality_votes; NUNCA altera
+ * award_status / commercial_status / fulfillment status / ranking. O motivo
+ * de revogação é administrativo (visível só aqui no admin, nunca no
+ * público). Tabela ainda não aplicada no remoto → {} fail-closed.
+ */
+export function useScopedCredentials(
+  distinctionIds: string[],
+): AsyncState<Record<string, DigitalCredential[]>> {
+  const key = useMemo(
+    () => JSON.stringify([...new Set(distinctionIds.filter(Boolean))].sort()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify([...new Set(distinctionIds.filter(Boolean))].sort().slice(0, 500))],
+  );
+  return useAsync<Record<string, DigitalCredential[]>>(
+    async () => {
+      const ids = JSON.parse(key) as string[];
+      if (ids.length === 0) return {};
+      if (!supabase) return {};
+      const { data, error } = await supabase
+        .from('digital_credentials')
+        .select('*')
+        .in('award_distinction_id', ids.slice(0, 500))
+        .order('credential_type')
+        .limit(2000);
+      if (error) {
+        if (
+          String(error.message).includes('digital_credentials') ||
+          String((error as { code?: string }).code) === '42P01'
+        ) {
+          return {};
+        }
+        throw error;
+      }
+      const out: Record<string, DigitalCredential[]> = {};
+      for (const row of (data ?? []) as DigitalCredential[]) {
         (out[row.award_distinction_id] ??= []).push(row);
       }
       return out;
