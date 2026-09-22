@@ -84,6 +84,17 @@ import {
   revokeCredential,
   verificationUrl,
 } from '../../lib/digitalCredentials';
+import {
+  certificateFilename,
+  resolveCredentialDisplayData,
+  sealFilename,
+  type CredentialDisplayData,
+} from '../../lib/credentialData';
+import {
+  downloadCertificatePdf,
+  downloadSealPng,
+} from '../../lib/credentialRenderer';
+import { CredentialPreview, type CredentialPreviewKind } from '../../components/CredentialPreview';
 import type {
   AwardDistinction,
   AwardStatus,
@@ -466,6 +477,13 @@ function CredentialManager({
   credentials,
   fulfillmentItems,
   campaignYear,
+  campaignName,
+  cityName,
+  categoryName,
+  modalityName,
+  distinctionLabel,
+  programName,
+  programPrefix,
   hasCampaign,
   onChanged,
   onClose,
@@ -475,6 +493,13 @@ function CredentialManager({
   credentials: DigitalCredential[];
   fulfillmentItems: DistinctionFulfillment[];
   campaignYear: number | null;
+  campaignName: string | null;
+  cityName: string;
+  categoryName: string;
+  modalityName: string | null;
+  distinctionLabel: string;
+  programName: string;
+  programPrefix: string;
   hasCampaign: boolean;
   onChanged: () => void;
   onClose: () => void;
@@ -485,6 +510,51 @@ function CredentialManager({
   const [revokeTarget, setRevokeTarget] = useState<DigitalCredential | null>(null);
   const [revokeReason, setRevokeReason] = useState('');
   const [revoking, setRevoking] = useState(false);
+  const [preview, setPreview] = useState<{ credential: DigitalCredential; kind: CredentialPreviewKind } | null>(null);
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  function displayDataFor(credential: DigitalCredential): CredentialDisplayData {
+    return resolveCredentialDisplayData({
+      credential: {
+        credential_type: credential.credential_type,
+        verification_code: credential.verification_code,
+        issued_at: credential.issued_at,
+        status: credential.status,
+      },
+      distinctionLabel,
+      businessName,
+      parentBrandName: 'The Best Europa',
+      programName,
+      campaignYear,
+      campaignName,
+      cityName,
+      categoryName,
+      modalityName,
+      programPrefix,
+    });
+  }
+
+  async function handleDownloadVisual(credential: DigitalCredential) {
+    if (credential.status !== 'issued') {
+      setError('Credencial revogada — geração e download bloqueados. O preview apresenta o carimbo REVOGADO.');
+      return;
+    }
+    setError(null);
+    setDownloading(credential.id);
+    try {
+      const data = displayDataFor(credential);
+      if (credential.credential_type === 'certificate') {
+        await downloadCertificatePdf(data, certificateFilename(businessName, campaignYear));
+      } else {
+        await downloadSealPng(data, sealFilename(businessName, campaignYear));
+      }
+      setInfo('Ficheiro gerado localmente a partir da credencial emitida. Mérito, relação comercial, reconhecimento, votos e ranking inalterados.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao gerar o ficheiro.');
+    } finally {
+      setDownloading(null);
+    }
+  }
 
   const fulfillmentByType = useMemo(() => {
     const m = new Map<FulfillmentItemType, DistinctionFulfillment>();
@@ -596,8 +666,13 @@ function CredentialManager({
                     </span>
                   )}
                   {!active && revoked.length > 0 && (
-                    <span className="inline-flex items-center rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-red-200">
-                      {DIGITAL_CREDENTIAL_STATUS_LABELS.revoked}
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="inline-flex items-center rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-red-200">
+                        {DIGITAL_CREDENTIAL_STATUS_LABELS.revoked}
+                      </span>
+                      <span className="inline-flex items-center rounded-md border border-red-500/50 bg-red-500/20 px-2 py-0.5 text-[11px] font-bold tracking-wider text-red-100">
+                        REVOGADO
+                      </span>
                     </span>
                   )}
                   {!fulfillment && (
@@ -634,14 +709,34 @@ function CredentialManager({
                   )}
                   {active && (
                     <>
+                      <button
+                        type="button"
+                        onClick={() => setPreview({
+                          credential: active,
+                          kind: t === 'certificate' ? 'certificate' : 'seal',
+                        })}
+                        title={t === 'certificate' ? 'Pré-visualizar certificado' : 'Pré-visualizar selo'}
+                        className="inline-flex items-center gap-1 rounded-lg border border-gold-500/40 bg-gold-500/10 px-2.5 py-1 text-xs font-semibold text-gold-300 transition hover:bg-gold-500/20"
+                      >
+                        {t === 'certificate' ? 'Pré-visualizar certificado' : 'Pré-visualizar selo'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadVisual(active)}
+                        disabled={downloading === active.id}
+                        title={t === 'certificate' ? 'Descarregar certificado' : 'Descarregar selo'}
+                        className="inline-flex items-center gap-1 rounded-lg border border-white/15 px-2.5 py-1 text-xs text-slate-200 transition hover:border-gold-500/50 hover:text-gold-300 disabled:opacity-40"
+                      >
+                        {downloading === active.id ? 'A gerar…' : t === 'certificate' ? 'Descarregar certificado' : 'Descarregar selo'}
+                      </button>
                       <a
-                        href={`#/pt/verificar/${active.verification_code}`}
+                        href={`#/${programPrefix}/verificar/${active.verification_code}`}
                         target="_blank"
                         rel="noreferrer"
-                        title="Verificar (abre a rota pública)"
+                        title="Verificar autenticidade (abre a rota pública)"
                         className="inline-flex items-center gap-1 rounded-lg border border-teal-500/40 bg-teal-500/10 px-2.5 py-1 text-xs font-semibold text-teal-200 transition hover:bg-teal-500/20"
                       >
-                        Verificar
+                        Verificar autenticidade
                       </a>
                       <button
                         type="button"
@@ -657,6 +752,19 @@ function CredentialManager({
                         Revogar
                       </button>
                     </>
+                  )}
+                  {!active && revoked.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setPreview({
+                        credential: revoked[revoked.length - 1],
+                        kind: t === 'certificate' ? 'certificate' : 'seal',
+                      })}
+                      title="Pré-visualizar (REVOGADO — carimbo aplicado, download bloqueado)"
+                      className="inline-flex items-center gap-1 rounded-lg border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-200 transition hover:bg-red-500/20"
+                    >
+                      Pré-visualizar (REVOGADO)
+                    </button>
                   )}
                 </div>
               </fieldset>
@@ -708,9 +816,24 @@ function CredentialManager({
           </div>
         )}
         <p className="text-[11px] leading-relaxed text-slate-500">
-          URL verificável (para futuro QR): <span className="font-mono">/pt/verificar/CÓDIGO</span> —{' '}
-          {verificationUrl('pt', 'TBE-PT-2026-EXEMPLO')}.
+          URL verificável (QR): <span className="font-mono">/{programPrefix}/verificar/CÓDIGO</span> —{' '}
+          {verificationUrl(programPrefix, 'TBE-PT-2026-EXEMPLO')}. O QR contém somente esta URL pública.
         </p>
+        {preview && (
+          <Modal
+            title={`${preview.kind === 'certificate' ? 'Pré-visualizar certificado' : 'Pré-visualizar selo'} — ${businessName}`}
+            onClose={() => setPreview(null)}
+            wide
+          >
+            <CredentialPreview
+              kind={preview.kind}
+              data={displayDataFor(preview.credential)}
+              onVerify={() => {
+                window.open(`#/${programPrefix}/verificar/${preview.credential.verification_code}`, '_blank', 'noopener');
+              }}
+            />
+          </Modal>
+        )}
       </div>
     </Modal>
   );
@@ -1664,9 +1787,11 @@ export default function DistinctionsAdminPage() {
         />
       )}
 
-      {/* FASE 5C.3.13 — emitir/revogar credenciais verificáveis (certificado,
-          selo). Escreve SOMENTE em digital_credentials; nunca altera mérito,
-          comercial, fulfillment, votos, ranking ou resultados públicos. */}
+      {/* FASE 5C.3.13 + 5C.3.14 — emitir/revogar credenciais verificáveis +
+          motor visual (pré-visualizar/descarregar/verificar). A geração de
+          ficheiro é efeito visual client-side (template + credential data),
+          nunca altera mérito, comercial, fulfillment, votos, ranking,
+          resultados, nem escreve em Storage. */}
       {credentialTarget && (
         <CredentialManager
           distinction={credentialTarget}
@@ -1674,6 +1799,13 @@ export default function DistinctionsAdminPage() {
           credentials={credentialsByDistinction[credentialTarget.id] ?? []}
           fulfillmentItems={fulfillmentByDistinction[credentialTarget.id] ?? []}
           campaignYear={selectedCampaign?.year ?? null}
+          campaignName={selectedCampaign?.name ?? null}
+          cityName={cityById.get(credentialTarget.city_id)?.name ?? '—'}
+          categoryName={categoryById.get(credentialTarget.category_id)?.name ?? '—'}
+          modalityName={modalityById.get(credentialTarget.modality_id)?.name ?? null}
+          distinctionLabel={modalityById.get(credentialTarget.modality_id)?.name ?? categoryById.get(credentialTarget.category_id)?.name ?? 'Distinção'}
+          programName={selectedProgram?.name ?? 'Melhores do Ano Portugal'}
+          programPrefix="pt"
           hasCampaign={hasCampaign}
           onChanged={() => {
             credentialsQuery.refetch();
