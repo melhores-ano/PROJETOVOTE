@@ -670,6 +670,12 @@ export default function ResultsAdminPage() {
                         >
                           Gerir distinção
                         </Link>
+                        <Link
+                          to={`/admin/distincoes?city=${cityId}&category=${categoryId}&modality=${modalityId}&business=${encodeURIComponent(r.business_name)}`}
+                          className="text-[11px] text-slate-400 underline hover:text-slate-200"
+                        >
+                          Ver distinção
+                        </Link>
                       </span>
                     ) : (
                       <button

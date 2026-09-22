@@ -1,13 +1,19 @@
 /**
- * THE BEST EUROPA — FASE 5C.3.10 — Admin > Distinções (pipeline operacional).
+ * THE BEST EUROPA — FASE 5C.3.11 — Admin > Distinções (fluxo operacional).
  *
- * Gestão operacional das distinções SEM manipular o resultado oficial:
+ * Ferramenta operacional pós-votação SEM manipular o resultado oficial:
+ *  - Colunas separadas: EMPRESA / CIDADE / CATEGORIA / MODALIDADE / POSIÇÃO
+ *    (via get_admin_modality_tally) / ORIGEM / MÉRITO (award_status) /
+ *    ESTADO COMERCIAL (commercial_status) / NOTAS / ÚLTIMA ATUALIZAÇÃO.
  *  - award_status (mérito) e commercial_status (relação comercial) são
  *    dimensões INDEPENDENTES em award_distinctions.
- *  - Posição/votos lidos de get_admin_modality_tally (modality_votes);
- *    NUNCA recalculados nem copiados para award_distinctions.
- *  - commercial_status = declined apenas guarda o estado + auditoria.
- *    NUNCA altera award_status, votos, rankings ou cria outra distinção.
+ *  - commercial_status = declined mostra "Recusou a distinção" mas preserva
+ *    empresa, modalidade, posição, award_status, votos e histórico. NUNCA
+ *    altera mérito, votos, rankings ou cria outra distinção.
+ *  - Pipeline comercial (CRM simples, SEM pagamento):
+ *      Pendente → Contactado → Aceite → Confirmado,
+ *      Pendente/Contactado → Recusado, qualquer → Cancelado.
+ *  - Ações rápidas usam SOMENTE updateCommercialStatus (auditado).
  *
  * Scope: AdminProgramProvider (única fonte) — programa + país + edição.
  * FAIL-CLOSED: sem programa válido → sem dados; sem edição válida →
@@ -31,11 +37,13 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import {
   AWARD_STATUSES,
   AWARD_STATUS_LABELS,
+  COMMERCIAL_QUICK_ACTIONS,
   COMMERCIAL_STATUSES,
   COMMERCIAL_STATUS_LABELS,
   SOURCE_LABELS,
   comboKey,
   createDistinction,
+  nextCommercialTransitions,
   tallyKey,
   updateAwardStatus,
   updateCommercialStatus,
@@ -146,6 +154,7 @@ export default function DistinctionsAdminPage() {
   const [notesError, setNotesError] = useState<string | null>(null);
 
   const [rowError, setRowError] = useState<string | null>(null);
+  const [busyRowId, setBusyRowId] = useState<string | null>(null);
 
   const hasProgram = Boolean(selectedProgram && selectedProgramId);
   const hasCampaign = Boolean(selectedCampaign && selectedCampaignId);
@@ -387,9 +396,13 @@ export default function DistinctionsAdminPage() {
       setRowError('Sem edição válida — alteração bloqueada (fail-closed).');
       return;
     }
+    if (d.commercial_status === next) return;
+    setBusyRowId(d.id);
     try {
       // REGRA ABSOLUTA: declined guarda-se e nada mais acontece.
       // Esta função altera SOMENTE commercial_status (ver lib/distinctions).
+      // NUNCA altera award_status, NUNCA cria nova distinção, NUNCA transfere
+      // posição, NUNCA toca em votos/rankings.
       await updateCommercialStatus(d, next, {
         campaign_id: selectedCampaignId,
         city_id: d.city_id,
@@ -403,6 +416,8 @@ export default function DistinctionsAdminPage() {
       setRowError(
         e instanceof Error ? e.message : 'Falha ao alterar o estado comercial.',
       );
+    } finally {
+      setBusyRowId(null);
     }
   }
 
@@ -451,6 +466,24 @@ export default function DistinctionsAdminPage() {
       />
       <SupabaseNotice />
       <AdminScopeBanner requireCampaign />
+
+      {/* FASE 5C.3.11 — pipeline operacional: mérito × comercial sempre separados.
+          commercial_status NUNCA altera award_status automaticamente. */}
+      <div className="mb-4 rounded-2xl border border-gold-500/20 bg-gold-500/[0.05] p-4 text-[13px] leading-relaxed text-slate-300">
+        <p className="font-semibold text-white">Fluxo operacional — mérito ≠ comercial</p>
+        <p className="mt-1">
+          Pipeline comercial: <strong className="text-white">Pendente → Contactado → Aceite → Confirmado</strong>
+          {' '}· alternativas: <strong className="text-white">Pendente/Contactado → Recusado</strong>
+          {' '}· <strong className="text-white">qualquer estado → Cancelado</strong>.
+          A recusa (<strong className="text-red-200">Recusou a distinção</strong>) preserva empresa, modalidade,
+          posição, mérito, votos e histórico — sem transferir prémios nem criar vencedores.
+        </p>
+        <p className="mt-1 text-xs text-slate-400">
+          Mérito (award_status): Elegível · Selecionado · Vencedor · Confirmado · Cancelado — alterado apenas pelo
+          controlo de mérito. Comercial (commercial_status): Pendente · Contactado · Aceite · Recusado · Confirmado ·
+          Cancelado — CRM simples, sem módulo financeiro.
+        </p>
+      </div>
 
       {!hasProgram ? (
         <ErrorState
@@ -653,26 +686,52 @@ export default function DistinctionsAdminPage() {
                   },
                   {
                     key: 'commercial_status',
-                    label: 'Comercial',
+                    label: 'Estado comercial',
                     render: (r) => {
                       const d = r as unknown as AwardDistinction;
+                      const busy = busyRowId === d.id;
+                      const suggested = nextCommercialTransitions(d.commercial_status);
+                      const quickLabel = (s: CommercialStatus): string =>
+                        COMMERCIAL_QUICK_ACTIONS.find((a) => a.next === s)?.label ?? s;
                       return (
-                        <span className="flex flex-col gap-1.5">
+                        <span className="flex min-w-44 flex-col gap-1.5">
                           <span className={`inline-flex w-fit items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${pillClass('commercial', d.commercial_status)}`}>
                             <PhoneCall className="h-3 w-3" />
                             {COMMERCIAL_STATUS_LABELS[d.commercial_status] ?? d.commercial_status}
                           </span>
+                          {d.commercial_status === 'declined' && (
+                            <span role="status" className="inline-flex w-fit items-center rounded-lg border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[11px] font-bold text-red-200">
+                              Recusou a distinção — mérito preservado, sem transferência
+                            </span>
+                          )}
                           <select
                             aria-label="Alterar estado comercial"
                             value={d.commercial_status}
-                            disabled={!isSupabaseConfigured || !hasCampaign}
+                            disabled={!isSupabaseConfigured || !hasCampaign || busy}
                             onChange={(e) => handleCommercialChange(d, e.target.value as CommercialStatus)}
-                            className="w-32 rounded-lg border border-white/15 bg-navy-950 px-2 py-1 text-[11px] text-slate-200"
+                            className="w-36 rounded-lg border border-white/15 bg-navy-950 px-2 py-1 text-[11px] text-slate-200"
                           >
                             {COMMERCIAL_STATUSES.map((s) => (
                               <option key={s} value={s} className="bg-navy-900">{COMMERCIAL_STATUS_LABELS[s]}</option>
                             ))}
                           </select>
+                          <span className="flex max-w-52 flex-wrap gap-1" aria-label="Ações rápidas comerciais">
+                            {suggested.map((s) => (
+                              <button
+                                key={s}
+                                type="button"
+                                onClick={() => handleCommercialChange(d, s)}
+                                disabled={!isSupabaseConfigured || !hasCampaign || busy || d.commercial_status === s}
+                                title={quickLabel(s)}
+                                className="rounded-md border border-white/15 px-1.5 py-0.5 text-[10px] font-medium text-slate-300 transition hover:border-gold-500/50 hover:text-gold-300 disabled:opacity-40"
+                              >
+                                {busy ? '…' : quickLabel(s).replace('Marcar como ', '').replace('Confirmar', 'Confirmar').replace('Cancelar', 'Cancelar')}
+                              </button>
+                            ))}
+                          </span>
+                          <span className="sr-only">
+                            {COMMERCIAL_QUICK_ACTIONS.map((a) => a.label).join(' · ')}
+                          </span>
                         </span>
                       );
                     },
@@ -690,8 +749,23 @@ export default function DistinctionsAdminPage() {
                     },
                   },
                   {
+                    key: 'notes',
+                    label: 'Notas',
+                    render: (r) => {
+                      const d = r as unknown as AwardDistinction;
+                      const text = (d.notes ?? '').trim();
+                      return text ? (
+                        <span className="block max-w-52 truncate text-[11px] text-slate-300" title={text}>
+                          {text}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-slate-600">— sem notas (administrativas, sem exposição pública)</span>
+                      );
+                    },
+                  },
+                  {
                     key: 'updated_at',
-                    label: 'Atualização',
+                    label: 'Última atualização',
                     render: (r) => (
                       <span className="text-[11px] text-slate-500">
                         {new Date(String(r.updated_at)).toLocaleString('pt-PT')}

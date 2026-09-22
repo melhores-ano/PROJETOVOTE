@@ -66,11 +66,19 @@ export default function ModalitiesAdminPage() {
   const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
   const distinctionsByModality = useMemo(() => {
-    const map = new Map<string, number>();
+    const total = new Map<string, number>();
+    const confirmed = new Map<string, number>();
+    const declined = new Map<string, number>();
     for (const d of distinctionsQuery.data ?? []) {
-      map.set(d.modality_id, (map.get(d.modality_id) ?? 0) + 1);
+      total.set(d.modality_id, (total.get(d.modality_id) ?? 0) + 1);
+      if (d.commercial_status === 'confirmed') {
+        confirmed.set(d.modality_id, (confirmed.get(d.modality_id) ?? 0) + 1);
+      }
+      if (d.commercial_status === 'declined') {
+        declined.set(d.modality_id, (declined.get(d.modality_id) ?? 0) + 1);
+      }
     }
-    return map;
+    return { total, confirmed, declined };
   }, [distinctionsQuery.data]);
 
   const filtered = useMemo(() => {
@@ -272,11 +280,17 @@ export default function ModalitiesAdminPage() {
                   {
                     key: 'distinctions',
                     label: 'Distinções (edição atual)',
-                    render: (r) => (
-                      <span className="text-xs text-slate-400" title={selectedCampaign ? `Edição ${selectedCampaign.year} — ${selectedCampaign.name}` : 'Sem edição selecionada'}>
-                        {distinctionsByModality.get(String((r as unknown as AwardModality).id)) ?? 0}
-                      </span>
-                    ),
+                    render: (r) => {
+                      const id = String((r as unknown as AwardModality).id);
+                      const n = distinctionsByModality.total.get(id) ?? 0;
+                      const y = distinctionsByModality.confirmed.get(id) ?? 0;
+                      const z = distinctionsByModality.declined.get(id) ?? 0;
+                      return (
+                        <span className="text-xs text-slate-400" title={selectedCampaign ? `Edição ${selectedCampaign.year} — ${selectedCampaign.name}` : 'Sem edição selecionada'}>
+                          {n} {n === 1 ? 'distinção' : 'distinções'} · {y} {y === 1 ? 'confirmada' : 'confirmadas'} · {z} {z === 1 ? 'recusada' : 'recusadas'}
+                        </span>
+                      );
+                    },
                   },
                   { key: 'active', label: 'Estado', render: (r) => <StatusPill active={Boolean(r.active)} /> },
                   {

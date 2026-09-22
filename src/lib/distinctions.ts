@@ -1,7 +1,7 @@
 /**
- * THE BEST EUROPA — FASE 5C.3.10 — Gestão operacional de distinções.
+ * THE BEST EUROPA — FASE 5C.3.11 — Fluxo operacional das distinções.
  *
- * Arquitetura:
+ * Arquitetura (reutilizada de 5C.3.8/5C.3.10, SEM migration 0016):
  *  - award_distinctions guarda APENAS estado administrativo (award_status,
  *    commercial_status, source, position, notes). NUNCA guarda votos.
  *  - Posição/votos são lidos de get_admin_modality_tally (modality_votes).
@@ -12,6 +12,10 @@
  *  - Auditoria: trigger trg_award_distinctions_audit escreve
  *    award_distinction.created/updated genericamente; aqui registamos
  *    eventos granulares via audit_logs (best-effort, nunca bloqueia).
+ *  - Fluxo comercial operacional (CRM simples, SEM pagamento):
+ *      pending → contacted → accepted → confirmed
+ *      pending/contacted → declined
+ *      qualquer estado → cancelled (administrativo)
  *
  * Valores permitidos (migration 0014 — auditados, NÃO inventados):
  *  - award_status: eligible|selected|winner|confirmed|cancelled
@@ -73,6 +77,89 @@ export const SOURCE_LABELS: Record<AwardDistinctionSource, string> = {
 
 export const DUPLICATE_MESSAGE =
   'Esta empresa já possui uma distinção nesta modalidade.';
+
+/* ---------------------------------------------------------------------------
+ * FASE 5C.3.11 — Fluxo operacional comercial (orientação de UI).
+ *
+ * Ordem canónica do pipeline:
+ *   pending → contacted → accepted → confirmed
+ * Alternativas terminais:
+ *   pending/contacted → declined (recusa: preserva mérito, sem transferência)
+ *   qualquer estado → cancelled (cancelamento administrativo)
+ *
+ * Estas estruturas são APENAS orientação de UI. A escrita continua a ser
+ * feita SOMENTE via updateCommercialStatus (auditada), sem efeitos laterais.
+ * ------------------------------------------------------------------------- */
+
+/** Ordem canónica do pipeline principal (happy path). */
+export const COMMERCIAL_FLOW: CommercialStatus[] = [
+  'pending',
+  'contacted',
+  'accepted',
+  'confirmed',
+];
+
+/** Rótulos curtos das ações rápidas operacionais. */
+export const COMMERCIAL_QUICK_ACTIONS: {
+  next: CommercialStatus;
+  label: string;
+}[] = [
+  { next: 'contacted', label: 'Marcar como contactado' },
+  { next: 'accepted', label: 'Marcar como aceite' },
+  { next: 'declined', label: 'Marcar como recusado' },
+  { next: 'confirmed', label: 'Confirmar' },
+  { next: 'cancelled', label: 'Cancelar' },
+];
+
+/*
+ * Próximas transições sugeridas a partir de um estado comercial.
+ * Puramente orientativo para a UI (a escrita valida apenas pertença à lista).
+ */
+export function nextCommercialTransitions(
+  current: CommercialStatus,
+): CommercialStatus[] {
+  switch (current) {
+    case 'pending':
+      return ['contacted', 'declined', 'cancelled'];
+    case 'contacted':
+      return ['accepted', 'declined', 'cancelled'];
+    case 'accepted':
+      return ['confirmed', 'declined', 'cancelled'];
+    case 'declined':
+    case 'confirmed':
+    case 'cancelled':
+      return ['cancelled'];
+    default:
+      return [];
+  }
+}
+
+/** Contagens operacionais por commercial_status (para os cards do topo). */
+export interface CommercialSummary {
+  total: number;
+  pending: number;
+  contacted: number;
+  accepted: number;
+  declined: number;
+  confirmed: number;
+  cancelled: number;
+}
+
+export function summarizeCommercial(
+  rows: Pick<AwardDistinction, 'commercial_status'>[],
+): CommercialSummary {
+  const count = (s: CommercialStatus): number =>
+    rows.filter((r) => r.commercial_status === s).length;
+  return {
+    total: rows.length,
+    pending: count('pending'),
+    contacted: count('contacted'),
+    accepted: count('accepted'),
+    declined: count('declined'),
+    confirmed: count('confirmed'),
+    cancelled: count('cancelled'),
+  };
+}
 
 export interface CreateDistinctionInput {
   campaign_id: string;
