@@ -1,11 +1,14 @@
 /**
- * THE BEST EUROPA — FASE 5C.3.14 — Dados do certificado/selo.
+ * THE BEST EUROPA — FASE 5C.3.15 — Dados do certificado/selo.
  *
  * Resolve DINAMICAMENTE a partir da digital_credential já emitida +
  * distinção/fonte autorizada. NUNCA cria credencial, NUNCA copia votos,
  * NUNCA persiste ranking como verdade permanente.
  *
- * Texto PT-PT configurável (sem texto antigo de terceiros).
+ * Texto PT-PT premium e curto (sem texto antigo de terceiros, sem
+ * "gerando empregos...", sem referências ao município do certificado ASTEC).
+ * Nomes longos são protegidos no renderer (redução automática + wrap);
+ * aqui garantimos normalização e limites sanos sem cortar identidade.
  */
 import type { DigitalCredential } from '../types/database';
 import { verificationUrl } from './digitalCredentials';
@@ -58,7 +61,7 @@ function clean(value: string | null | undefined, fallback: string): string {
   return v === '' ? fallback : v;
 }
 
-/** Frase de reconhecimento PT-PT; omite modalidade sem deixar buracos. */
+/** Frase de reconhecimento PT-PT premium e curta; omite modalidade sem deixar buracos. */
 export function buildRecognitionBody(input: {
   modalityName: string | null;
   categoryName: string;
@@ -68,17 +71,51 @@ export function buildRecognitionBody(input: {
 }): string {
   const modality = (input.modalityName ?? '').trim();
   const edition = input.campaignYear ? ` — Edição ${input.campaignYear}` : '';
+  const merit =
+    'Em reconhecimento pelo mérito e destaque alcançados na sua área de atividade,';
   if (modality !== '') {
     return (
-      `Em reconhecimento pela distinção ${modality}, na categoria ` +
+      `${merit} distinção ${modality}, na categoria ` +
       `${input.categoryName}, em ${input.cityName}, no âmbito do ` +
       `${input.programName}${edition}.`
     );
   }
   return (
-    `Em reconhecimento pela distinção na categoria ${input.categoryName}, ` +
+    `${merit} distinção na categoria ${input.categoryName}, ` +
     `em ${input.cityName}, no âmbito do ${input.programName}${edition}.`
   );
+}
+
+/**
+ * 5C.3.15 — Normaliza nomes longos para composição elegante: colapsa
+ * espaços, limita a 120 chars (sem cortar palavra a meio quando possível).
+ * O renderer aplica ainda redução automática de font-size + wrap controlado
+ * dentro da área segura, por isso o nome nunca sai da área útil.
+ * Ex.: "BARCOS ASTEC" e "ASSOCIAÇÃO EMPRESARIAL E COMERCIAL DO VALE DO MINHO".
+ */
+export function clampDisplayName(raw: string | null | undefined, maxChars = 120): string {
+  const v = (raw ?? '').replace(/\s+/g, ' ').trim();
+  if (v === '') return '—';
+  if (v.length <= maxChars) return v;
+  const cut = v.slice(0, maxChars);
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${(lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trim()}…`;
+}
+
+/** Linha de distinção curta para o selo (modalidade > categoria). */
+export function sealDistinctionShort(input: {
+  modalityName: string | null;
+  categoryName: string;
+}): string {
+  const modality = (input.modalityName ?? '').trim();
+  if (modality !== '' && modality !== '—') return clampDisplayName(modality, 80);
+  return clampDisplayName(input.categoryName, 80);
+}
+
+/** Texto do selo: ano e, quando apropriado, modalidade/categoria. */
+export function sealYearLine(campaignYear: number | null, programName: string): string {
+  if (campaignYear) return `Edição ${campaignYear}`;
+  return programName;
 }
 
 export function formatIssuedAtPt(iso: string): string {

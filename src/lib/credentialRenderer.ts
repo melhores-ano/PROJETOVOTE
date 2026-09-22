@@ -1,27 +1,45 @@
 /**
- * THE BEST EUROPA — FASE 5C.3.14 — Motor de renderização visual.
+ * THE BEST EUROPA — FASE 5C.3.15 — Motor de renderização visual.
  *
  * Geração client-side determinística: template + credential data → canvas →
- * PNG preview / PDF A4 landscape / PNG selo. NUNCA cria credencial nova,
- * NUNCA escreve em votes/vote_attempts/vote_adjustments/modality_votes,
- * NUNCA altera award/commercial/fulfillment/credential status, NUNCA usa
- * Storage remoto (sem bucket novo). QR contém SOMENTE a URL pública
+ * PNG preview / PDF A4 landscape / PNG selo (limpo ou verificável). NUNCA
+ * cria credencial nova, NUNCA escreve em votes/vote_attempts/vote_adjustments/
+ * modality_votes, NUNCA altera award/commercial/fulfillment/credential status,
+ * NUNCA usa Storage remoto (sem bucket novo). QR contém SOMENTE a URL pública
  * /:programPrefix/verificar/:verificationCode (sem IDs internos).
+ *
+ * 5C.3.15 — integração das artes oficiais:
+ *  - a ARTE domina o certificado; dados dinâmicos ocupam a área preta à
+ *    direita (contentArea/safeArea em credentialTemplates.ts);
+ *  - sem caixas brancas nem aparência de formulário — peça gráfica;
+ *  - nomes longos: redução automática de font-size + wrap controlado;
+ *  - QR discreto inferior-direito + legenda "Verificar autenticidade";
+ *  - selo: medalhão dominante, PNG transparente, variantes clean/verifiable;
+ *  - fonte de verdade do asset = CREDENTIAL_ASSET_STATUS (sem rede).
  */
 import QRCode from 'qrcode';
 import { jsPDF } from 'jspdf';
 import {
   CERTIFICATE_TEMPLATE,
+  CREDENTIAL_COPY,
+  SEAL_CLEAN_TEMPLATE,
   SEAL_TEMPLATE,
+  SEAL_VERIFIABLE_TEMPLATE,
+  isOfficialAsset,
+  type SealTemplateConfig,
+  type SealVariant,
   type TemplateBox,
   type TemplateTypography,
 } from '../config/credentialTemplates';
 import {
   absoluteVerifyUrl,
+  sealDistinctionShort,
+  sealYearLine,
   type CredentialDisplayData,
 } from './credentialData';
 
 export type RenderKind = 'certificate' | 'seal';
+export type { SealVariant };
 
 export interface TemplateAvailability {
   certificateBackground: boolean;
@@ -32,8 +50,8 @@ function boxToPx(box: TemplateBox, w: number, h: number) {
   return { x: box.x * w, y: box.y * h, w: box.w * w, h: box.h * h, align: box.align ?? 'center' as const };
 }
 
-function applyTypography(ctx: CanvasRenderingContext2D, t: TemplateTypography, scale: number) {
-  const size = Math.max(1, Math.round(t.sizePxAt300dpi * scale));
+function applyTypography(ctx: CanvasRenderingContext2D, t: TemplateTypography, scale: number, overrideSizePx?: number) {
+  const size = Math.max(1, Math.round((overrideSizePx ?? t.sizePxAt300dpi) * scale));
   ctx.font = `${t.weight ?? 400} ${size}px ${t.family}`;
   ctx.fillStyle = t.color;
   ctx.textBaseline = 'top';
@@ -41,6 +59,7 @@ function applyTypography(ctx: CanvasRenderingContext2D, t: TemplateTypography, s
     (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing =
       t.letterSpacingPx ? `${Math.round(t.letterSpacingPx * scale)}px` : '0px';
   } catch { /* canvas sem letterSpacing — ignora */ }
+  return size;
 }
 
 function displayText(text: string, uppercase?: boolean): string {
@@ -91,6 +110,47 @@ function drawWrapped(
   ctx.textAlign = 'left';
 }
 
+/**
+ * 5C.3.15 — Desenha com redução automática de font-size para nomes longos:
+ * reduz até caber em maxLines dentro da largura da caixa (nunca abaixo de
+ * minSize). Garante acentos PT (fontes serif do projeto) e nunca deixa o
+ * nome sair da área útil (wrap controlado + maxWidth no fillText).
+ */
+function drawAutoFit(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  box: TemplateBox & { typography: TemplateTypography; minSizePxAt300dpi: number; maxLines: number },
+  canvasW: number,
+  canvasH: number,
+  scale: number,
+  lineHeightRatio = 1.15,
+): void {
+  const px = boxToPx(box, canvasW, canvasH);
+  const content = displayText(text, box.typography.uppercase);
+  let sizePx = box.typography.sizePxAt300dpi;
+  let lines: string[] = [content];
+  while (sizePx > box.minSizePxAt300dpi) {
+    applyTypography(ctx, box.typography, scale, sizePx);
+    lines = wrapLines(ctx, content, px.w);
+    if (lines.length <= box.maxLines) break;
+    sizePx -= 4;
+  }
+  applyTypography(ctx, box.typography, scale, sizePx);
+  lines = wrapLines(ctx, content, px.w).slice(0, box.maxLines);
+  const size = Math.max(1, Math.round(sizePx * scale));
+  const lineHeight = size * lineHeightRatio;
+  const totalH = lines.length * lineHeight;
+  let startY = px.y;
+  if (box.align === 'center') startY = px.y + Math.max(0, (px.h - totalH) / 2);
+  if (box.align === 'right') startY = px.y + Math.max(0, px.h - totalH);
+  ctx.textAlign = box.align ?? 'center';
+  const cx = box.align === 'left' ? px.x : box.align === 'right' ? px.x + px.w : px.x + px.w / 2;
+  lines.forEach((line, i) => {
+    ctx.fillText(line, cx, startY + i * lineHeight, px.w);
+  });
+  ctx.textAlign = 'left';
+}
+
 function loadImage(src: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const img = new Image();
@@ -108,7 +168,13 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
   });
 }
 
-/** Verifica se o asset oficial existe (HEAD/GET leve); false → placeholder. */
+/**
+ * Verifica se o asset oficial existe (HEAD/GET leve); false → placeholder.
+ * NOTA 5C.3.15: a fonte de verdade visível é CREDENTIAL_ASSET_STATUS
+ * (configuração explícita, sem rede). Esta sonda é apenas fallback técnico
+ * para o carregamento da imagem — o aviso "Arte oficial ainda não instalada"
+ * deriva do flag, não desta função.
+ */
 export async function checkTemplateAvailability(): Promise<TemplateAvailability> {
   async function probe(path: string): Promise<boolean> {
     try {
@@ -127,6 +193,14 @@ export async function checkTemplateAvailability(): Promise<TemplateAvailability>
     probe(SEAL_TEMPLATE.backgroundPath),
   ]);
   return { certificateBackground, sealBackground };
+}
+
+/** Estado oficial vs placeholder por configuração explícita (sem rede). */
+export function templateAssetStatus(): { certificate: 'placeholder' | 'official'; seal: 'placeholder' | 'official' } {
+  return {
+    certificate: isOfficialAsset('certificate') ? 'official' : 'placeholder',
+    seal: isOfficialAsset('seal') ? 'official' : 'placeholder',
+  };
 }
 
 function paintCertificatePlaceholder(ctx: CanvasRenderingContext2D, w: number, h: number): void {
@@ -247,6 +321,10 @@ function originNow(): string {
   return '';
 }
 
+function sealTemplateFor(variant: SealVariant): SealTemplateConfig {
+  return variant === 'clean' ? SEAL_CLEAN_TEMPLATE : SEAL_VERIFIABLE_TEMPLATE;
+}
+
 export interface RenderCertificateOptions {
   /** Escala de preview (1 = 300dpi). Usa 0.35 para preview rápido. */
   scale?: number;
@@ -278,16 +356,20 @@ export async function renderCertificateCanvas(
     paintCertificatePlaceholder(ctx, w, h);
     usedPlaceholder = true;
   }
+  // Sem configuração oficial instalada, o placeholder técnico continua
+  // identificado mesmo que um PNG transitório exista em cache.
+  if (!isOfficialAsset('certificate')) usedPlaceholder = true;
   const t = CERTIFICATE_TEMPLATE;
   drawWrapped(ctx, data.parentBrandName, t.fields.eyebrow, w, h, scale);
   drawWrapped(ctx, data.headline, t.fields.title, w, h, scale);
   drawWrapped(ctx, data.introLine, t.fields.intro, w, h, scale);
-  drawWrapped(ctx, data.recipientName, t.fields.recipientName, w, h, scale, 1.15);
+  drawAutoFit(ctx, data.recipientName, t.fields.recipientName, w, h, scale);
   drawWrapped(ctx, data.bodyText, t.fields.body, w, h, scale, 1.35);
   drawWrapped(ctx, data.codeLine, t.fields.verificationCode, w, h, scale);
   drawWrapped(ctx, data.issuedLine, t.fields.issuedAt, w, h, scale);
   drawWrapped(ctx, data.editionLine, t.fields.edition, w, h, scale);
-  // QR verificável (URL absoluta).
+  // QR verificável (URL absoluta) — discreto, inferior direito, sem
+  // sobrepor elementos importantes da arte + legenda institucional.
   const absoluteUrl = absoluteVerifyUrl(originNow(), data.verifyPath);
   let qrUrl = options.qrDataUrl ?? null;
   if (qrUrl === null && options.qrDataUrl === undefined) {
@@ -303,6 +385,7 @@ export async function renderCertificateCanvas(
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(qx - t.qr.marginPx * scale, qy - t.qr.marginPx * scale, side + t.qr.marginPx * 2 * scale, side + t.qr.marginPx * 2 * scale);
       ctx.drawImage(img, qx, qy, side, side);
+      drawWrapped(ctx, CREDENTIAL_COPY.qrCaption, t.fields.qrCaption, w, h, scale);
     }
   }
   if (data.status === 'revoked') {
@@ -313,15 +396,36 @@ export async function renderCertificateCanvas(
 
 export interface RenderSealOptions {
   backgroundImage?: HTMLImageElement | null;
+  qrDataUrl?: string | null;
+  /**
+   * 5C.3.15 — variante do selo:
+   *  - "clean": sem QR visível (website/redes/publicidade/assinatura);
+   *  - "verifiable": QR + código discretos (autenticidade).
+   * Omisso → "verifiable" (compat 5C.3.14, que já expunha o código).
+   */
+  variant?: SealVariant;
 }
 
-/** Renderiza o selo digital 1080×1080 (PNG). */
+function sealTexts(data: CredentialDisplayData) {
+  return {
+    year: sealYearLine(data.campaignYear, data.programName),
+    distinction: sealDistinctionShort({ modalityName: data.modalityName, categoryName: data.distinctionLabel }),
+  };
+}
+
+/**
+ * Renderiza o selo digital 1080×1080 (PNG com transparência preservada —
+ * nunca fundo branco). O medalhão permanece visualmente dominante; texto
+ * mínimo (ano + modalidade/categoria quando apropriado).
+ */
 export async function renderSealCanvas(
   data: CredentialDisplayData,
   options: RenderSealOptions = {},
-): Promise<{ canvas: HTMLCanvasElement; usedPlaceholder: boolean }> {
-  const w = SEAL_TEMPLATE.widthPx;
-  const h = SEAL_TEMPLATE.heightPx;
+): Promise<{ canvas: HTMLCanvasElement; usedPlaceholder: boolean; variant: SealVariant }> {
+  const variant: SealVariant = options.variant ?? 'verifiable';
+  const tpl = sealTemplateFor(variant);
+  const w = tpl.widthPx;
+  const h = tpl.heightPx;
   const scale = w / 1080;
   const canvas = document.createElement('canvas');
   canvas.width = w;
@@ -330,7 +434,7 @@ export async function renderSealCanvas(
   if (!ctx) throw new Error('Canvas indisponível neste navegador.');
   let bg = options.backgroundImage ?? null;
   if (bg === null && options.backgroundImage === undefined) {
-    bg = await loadImage(SEAL_TEMPLATE.backgroundPath);
+    bg = await loadImage(tpl.backgroundPath);
   }
   let usedPlaceholder = false;
   if (bg) {
@@ -339,24 +443,54 @@ export async function renderSealCanvas(
     paintSealPlaceholder(ctx, w, h);
     usedPlaceholder = true;
   }
-  const f = SEAL_TEMPLATE.fields;
+  if (!isOfficialAsset('seal')) usedPlaceholder = true;
+  const f = tpl.fields;
+  const texts = sealTexts(data);
   drawWrapped(ctx, data.parentBrandName, f.brandLine, w, h, scale);
   drawWrapped(ctx, data.programName, f.programLine, w, h, scale);
-  drawWrapped(
-    ctx,
-    data.campaignYear ? `Edição ${data.campaignYear}` : data.programName,
-    f.yearLine,
-    w,
-    h,
-    scale,
-  );
-  const distinctionShort = data.modalityName ?? data.distinctionLabel;
-  drawWrapped(ctx, distinctionShort, f.distinctionLine, w, h, scale);
-  drawWrapped(ctx, data.verificationCode, SEAL_TEMPLATE.verificationCode, w, h, scale);
-  if (data.status === 'revoked') {
-    drawRevokedStamp(ctx, SEAL_TEMPLATE.revokedWatermark.text, SEAL_TEMPLATE.revokedWatermark.typography, SEAL_TEMPLATE.revokedWatermark.angleDeg, w, h, scale);
+  drawWrapped(ctx, texts.year, f.yearLine, w, h, scale);
+  drawAutoFit(ctx, texts.distinction, f.distinctionLine, w, h, scale);
+  // VERSÃO 1 (clean): sem QR visível. VERSÃO 2 (verifiable): QR discreto.
+  if (variant === 'verifiable' && tpl.qr) {
+    const absoluteUrl = absoluteVerifyUrl(originNow(), data.verifyPath);
+    let qrUrl = options.qrDataUrl ?? null;
+    if (qrUrl === null && options.qrDataUrl === undefined) {
+      qrUrl = await buildVerifyQrDataUrl(absoluteUrl, 320);
+    }
+    if (qrUrl) {
+      const img = await loadImage(qrUrl);
+      if (img) {
+        const q = boxToPx(tpl.qr, w, h);
+        const side = Math.min(q.w, q.h);
+        const qx = q.x + (q.w - side) / 2;
+        const qy = q.y + (q.h - side) / 2;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(qx - tpl.qr.marginPx, qy - tpl.qr.marginPx, side + tpl.qr.marginPx * 2, side + tpl.qr.marginPx * 2);
+        ctx.drawImage(img, qx, qy, side, side);
+      }
+    }
   }
-  return { canvas, usedPlaceholder };
+  drawWrapped(ctx, data.verificationCode, tpl.verificationCode, w, h, scale);
+  if (data.status === 'revoked') {
+    drawRevokedStamp(ctx, tpl.revokedWatermark.text, tpl.revokedWatermark.typography, tpl.revokedWatermark.angleDeg, w, h, scale);
+  }
+  return { canvas, usedPlaceholder, variant };
+}
+
+/** 5C.3.15 — selo limpo (sem QR): website, redes, publicidade, assinatura. */
+export async function renderSealCleanCanvas(
+  data: CredentialDisplayData,
+  options: Omit<RenderSealOptions, 'variant'> = {},
+): Promise<{ canvas: HTMLCanvasElement; usedPlaceholder: boolean; variant: SealVariant }> {
+  return renderSealCanvas(data, { ...options, variant: 'clean' });
+}
+
+/** 5C.3.15 — selo verificável (QR discreto + código). Mesma credencial. */
+export async function renderSealVerifiableCanvas(
+  data: CredentialDisplayData,
+  options: Omit<RenderSealOptions, 'variant'> = {},
+): Promise<{ canvas: HTMLCanvasElement; usedPlaceholder: boolean; variant: SealVariant }> {
+  return renderSealCanvas(data, { ...options, variant: 'verifiable' });
 }
 
 /** Descarrega o certificado em PDF A4 landscape (alta resolução). */
@@ -395,10 +529,14 @@ export async function downloadCertificatePng(data: CredentialDisplayData, filena
   await downloadCanvasPng(canvas, filename);
 }
 
-export async function downloadSealPng(data: CredentialDisplayData, filename: string): Promise<void> {
+export async function downloadSealPng(
+  data: CredentialDisplayData,
+  filename: string,
+  variant: SealVariant = 'verifiable',
+): Promise<void> {
   if (data.status === 'revoked') {
     throw new Error('Credencial revogada — download normal bloqueado.');
   }
-  const { canvas } = await renderSealCanvas(data, {});
+  const { canvas } = await renderSealCanvas(data, { variant });
   await downloadCanvasPng(canvas, filename);
 }

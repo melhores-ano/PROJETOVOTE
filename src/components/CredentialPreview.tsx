@@ -1,11 +1,19 @@
 /**
- * THE BEST EUROPA — FASE 5C.3.14 — Pré-visualização de certificado/selo.
+ * THE BEST EUROPA — FASE 5C.3.15 — Pré-visualização de certificado/selo.
  *
  * Estados: loading · erro · credencial ausente · revogada (carimbo REVOGADO)
  * · template ausente (aviso técnico, nunca quebra a página).
+ *
+ * 5C.3.15:
+ *  - certificado: preview landscape (proporção A4 real);
+ *  - selo: preview quadrado/transparente + alternador clean/verificável;
+ *  - aviso "Arte oficial ainda não instalada — utilizando placeholder
+ *    técnico." SOMENTE quando CREDENTIAL_ASSET_STATUS = placeholder;
+ *    quando o PNG oficial existir (status official), o aviso desaparece.
  */
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Download, Loader2, ShieldAlert } from 'lucide-react';
+import { isOfficialAsset } from '../config/credentialTemplates';
 import type { CredentialDisplayData } from '../lib/credentialData';
 import {
   certificateFilename,
@@ -19,6 +27,7 @@ import {
   downloadSealPng,
   renderCertificateCanvas,
   renderSealCanvas,
+  type SealVariant,
 } from '../lib/credentialRenderer';
 
 export type CredentialPreviewKind = 'certificate' | 'seal';
@@ -27,18 +36,26 @@ export function CredentialPreview({
   kind,
   data,
   onVerify,
+  initialSealVariant = 'verifiable',
 }: {
   kind: CredentialPreviewKind;
   data: CredentialDisplayData | null;
   onVerify?: () => void;
+  initialSealVariant?: SealVariant;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState<string | null>(null);
   const [usedPlaceholder, setUsedPlaceholder] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [sealVariant, setSealVariant] = useState<SealVariant>(initialSealVariant);
 
   const revoked = data?.status === 'revoked';
+  // Fonte de verdade do aviso: configuração explícita (sem rede).
+  const officialInstalled = kind === 'certificate'
+    ? isOfficialAsset('certificate')
+    : isOfficialAsset('seal');
+  const showPlaceholderNotice = !officialInstalled || usedPlaceholder;
 
   useEffect(() => {
     let cancelled = false;
@@ -65,7 +82,7 @@ export function CredentialPreview({
             (host as HTMLCanvasElement & { __src?: HTMLCanvasElement }).__src = canvas;
           }
         } else {
-          const { canvas, usedPlaceholder: ph } = await renderSealCanvas(data, {});
+          const { canvas, usedPlaceholder: ph } = await renderSealCanvas(data, { variant: sealVariant });
           if (cancelled) return;
           setUsedPlaceholder(ph);
           const host = canvasRef.current;
@@ -88,7 +105,7 @@ export function CredentialPreview({
     return () => {
       cancelled = true;
     };
-  }, [kind, data]);
+  }, [kind, data, sealVariant]);
 
   async function handleDownload() {
     if (!data || revoked) return;
@@ -97,7 +114,7 @@ export function CredentialPreview({
       if (kind === 'certificate') {
         await downloadCertificatePdf(data, certificateFilename(data.businessName, data.campaignYear));
       } else {
-        await downloadSealPng(data, sealFilename(data.businessName, data.campaignYear));
+        await downloadSealPng(data, sealFilename(data.businessName, data.campaignYear), sealVariant);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha no download.');
@@ -141,12 +158,45 @@ export function CredentialPreview({
           REVOGADO — esta credencial já não é válida. Geração e download bloqueados.
         </p>
       )}
-      {usedPlaceholder && state === 'ready' && (
+      {showPlaceholderNotice && state === 'ready' && (
         <p role="note" className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs leading-relaxed text-amber-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          Aviso técnico: fundo oficial ainda não colocado em /brand/credentials/ — a usar fundo provisório.
-          Coloque {kind === 'certificate' ? 'certificate-background.png' : 'seal-background.png'} para a arte definitiva.
+          Arte oficial ainda não instalada — utilizando placeholder técnico.
+          Coloque {kind === 'certificate' ? 'certificate-background.png' : 'seal-background.png'} em /brand/credentials/ para a arte definitiva.
         </p>
+      )}
+      {kind === 'seal' && state === 'ready' && (
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Variante do selo">
+          <button
+            type="button"
+            onClick={() => setSealVariant('clean')}
+            aria-pressed={sealVariant === 'clean'}
+            className={`rounded-xl px-4 py-2 text-xs font-semibold transition ${
+              sealVariant === 'clean'
+                ? 'bg-gold-gradient text-navy-950 shadow-award'
+                : 'border border-white/15 text-slate-300 hover:border-gold-500/50 hover:text-gold-300'
+            }`}
+          >
+            Selo limpo (sem QR)
+          </button>
+          <button
+            type="button"
+            onClick={() => setSealVariant('verifiable')}
+            aria-pressed={sealVariant === 'verifiable'}
+            className={`rounded-xl px-4 py-2 text-xs font-semibold transition ${
+              sealVariant === 'verifiable'
+                ? 'bg-gold-gradient text-navy-950 shadow-award'
+                : 'border border-white/15 text-slate-300 hover:border-gold-500/50 hover:text-gold-300'
+            }`}
+          >
+            Selo verificável (com QR)
+          </button>
+          <span className="text-[11px] text-slate-500">
+            {sealVariant === 'clean'
+              ? 'Para website, redes sociais, publicidade e assinatura digital.'
+              : 'Com QR e código de autenticidade. Mesma credencial.'}
+          </span>
+        </div>
       )}
       <div className="overflow-hidden rounded-2xl border border-white/10 bg-navy-950/60 p-3">
         {state === 'loading' && (
@@ -161,7 +211,7 @@ export function CredentialPreview({
         )}
         <canvas
           ref={canvasRef}
-          className={`mx-auto w-full ${kind === 'seal' ? 'max-w-sm' : ''} rounded-xl ${state !== 'ready' ? 'hidden' : ''}`}
+          className={`mx-auto w-full ${kind === 'certificate' ? 'aspect-[297/210]' : 'max-w-sm aspect-square'} rounded-xl ${state !== 'ready' ? 'hidden' : ''} ${kind === 'seal' ? 'bg-[repeating-conic-gradient(#1a1a22_0%_25%,#101014_0%_50%)] bg-[length:24px_24px]' : ''}`}
           aria-label={kind === 'certificate' ? 'Pré-visualizar certificado' : 'Pré-visualizar selo'}
         />
       </div>
@@ -174,7 +224,7 @@ export function CredentialPreview({
             className="inline-flex items-center gap-1.5 rounded-xl bg-gold-gradient px-4 py-2 text-xs font-semibold text-navy-950 shadow-award transition hover:brightness-110 disabled:opacity-40"
           >
             <Download className="h-3.5 w-3.5" />
-            {busy ? 'A gerar…' : kind === 'certificate' ? 'Descarregar certificado (PDF A4)' : 'Descarregar selo (PNG)'}
+            {busy ? 'A gerar…' : kind === 'certificate' ? 'Descarregar certificado (PDF A4)' : `Descarregar selo ${sealVariant === 'clean' ? 'limpo' : 'verificável'} (PNG)`}
           </button>
           {kind === 'certificate' && (
             <button
