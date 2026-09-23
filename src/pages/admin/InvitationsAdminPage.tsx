@@ -4,6 +4,7 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import type { Business, Campaign, Category, City, ParticipantInvitation } from '../../types/database';
 import { useOptionalAdminProgram } from '../../hooks/useAdminProgram';
 import { useParticipantInvitations } from '../../hooks/useParticipantInvitations';
+import { useScopedCategoryAreas } from '../../hooks/useCategoryAreas';
 import {
   INVITATION_AUDIT_ACTIONS,
   INVITATION_CONTACT_METHOD_LABELS,
@@ -151,6 +152,11 @@ export default function InvitationsAdminPage() {
   }, [rows]);
 
   const byCategory = useMemo(() => summarizeByCategory(rows), [rows]);
+  // FASE 6.2: Área derivada através da categoria (SOMENTE visual — NÃO
+  // altera participant_invitations schema nem a lógica da Fase 6.1).
+  const areasQuery = useScopedCategoryAreas(adminProgramId);
+  const areasById = useMemo(() => new Map((areasQuery.data ?? []).map((a) => [a.id, a])), [areasQuery.data]);
+  const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const categoryName = useMemo(() => {
     const m = new Map(categories.map((c) => [c.id, c.name]));
     for (const r of rows) {
@@ -369,6 +375,13 @@ export default function InvitationsAdminPage() {
     (r.city as unknown as { name?: string } | null)?.name ?? cities.find((c) => c.id === r.city_id)?.name ?? '—';
   const catName = (r: ParticipantInvitation) =>
     (r.category as unknown as { name?: string } | null)?.name ?? categoryName.get(r.category_id) ?? '—';
+  // FASE 6.2: área derivada da categoria (visual); "—" quando sem área.
+  const areaName = (r: ParticipantInvitation) => {
+    const joined = (r.category as unknown as { area_id?: string | null } | null)?.area_id ?? null;
+    const areaId = joined ?? categoryById.get(r.category_id)?.area_id ?? null;
+    if (!areaId) return '—';
+    return areasById.get(areaId)?.name ?? '—';
+  };
 
   return (
     <div>
@@ -447,6 +460,7 @@ export default function InvitationsAdminPage() {
             { key: 'business', label: 'Empresa', render: (r) => <span className="font-medium text-white">{bizName(r)}</span> },
             { key: 'city', label: 'Cidade', render: (r) => <span>{cityName(r)}</span> },
             { key: 'category', label: 'Categoria', render: (r) => <span>{catName(r)}</span> },
+            { key: 'area', label: 'Área', render: (r) => <span className="text-xs text-gold-300/90">{areaName(r)}</span> },
             { key: 'status', label: 'Estado', render: (r) => statusPill(r.status) },
             { key: 'contact', label: 'Contacto', render: (r) => <span className="text-xs text-slate-400">{contactMethodLabel(r.contact_method)}</span> },
             { key: 'entry', label: 'Entry', render: (r) => <span className="text-xs text-slate-400">{r.campaign_entry_id ? 'associada' : '—'}</span> },

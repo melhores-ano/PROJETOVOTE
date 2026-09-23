@@ -54,6 +54,7 @@ const DashboardPage = lazy(() => import('./pages/admin/DashboardPage'));
 const CampaignsPage = lazy(() => import('./pages/admin/CampaignsPage'));
 const CitiesAdminPage = lazy(() => import('./pages/admin/CitiesAdminPage'));
 const CategoriesAdminPage = lazy(() => import('./pages/admin/CategoriesAdminPage'));
+const CategoryAreasAdminPage = lazy(() => import('./pages/admin/CategoryAreasAdminPage'));
 const ModalitiesAdminPage = lazy(() => import('./pages/admin/ModalitiesAdminPage'));
 const DistinctionsAdminPage = lazy(() => import('./pages/admin/DistinctionsAdminPage'));
 const BusinessesAdminPage = lazy(() => import('./pages/admin/BusinessesAdminPage'));
@@ -148,6 +149,7 @@ function AppRoutes() {
         <Route path="admin/campanhas" element={withMeta(<CampaignsPage />, 'Administração — Campanhas')} />
         <Route path="admin/cidades" element={withMeta(<CitiesAdminPage />, 'Administração — Cidades')} />
         <Route path="admin/categorias" element={withMeta(<CategoriesAdminPage />, 'Administração — Categorias')} />
+        <Route path="admin/areas" element={withMeta(<CategoryAreasAdminPage />, 'Administração — Áreas')} />
         <Route path="admin/modalidades" element={withMeta(<ModalitiesAdminPage />, 'Administração — Modalidades')} />
         <Route path="admin/distincoes" element={withMeta(<DistinctionsAdminPage />, 'Administração — Distinções')} />
         <Route path="admin/empresas" element={withMeta(<BusinessesAdminPage />, 'Administração — Empresas')} />

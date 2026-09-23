@@ -1,14 +1,20 @@
 /**
- * THE BEST EUROPA — FASE 5C.3.7 — Admin > Categorias (isolado por programa).
+ * THE BEST EUROPA — FASE 5C.3.7 → FASE 6.2 — Admin > Categorias (isolado por programa).
  *
  * Scope: categories.award_program_id = programa selecionado
  * (AdminProgramProvider — única fonte). FAIL-CLOSED: sem programa válido
  * → sem dados. Criação deriva award_program_id + locale do programa.
  * As 8 categorias existentes de Portugal NÃO são alteradas.
+ *
+ * FASE 6.2: campo opcional Área (categories.area_id → category_areas do
+ * programa atual; NULL = "Sem área"). A categoria continua a ser a unidade
+ * eleitoral real — category_id permanece a autoridade em campaign_entries,
+ * votes e results. Área nunca recebe votos.
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pencil, Plus } from 'lucide-react';
 import { useScopedCategories } from '../../hooks/useAdminData';
+import { useScopedCategoryAreas } from '../../hooks/useCategoryAreas';
 import { useAdminProgram } from '../../hooks/useAdminProgram';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { audit } from '../../lib/audit';
@@ -26,14 +32,19 @@ interface CategoryFormState {
   slug: string;
   description: string;
   icon: string;
+  /** FASE 6.2: área do programa atual; '' = Sem área (area_id NULL). */
+  area_id: string;
   active: boolean;
 }
 
-const emptyForm: CategoryFormState = { name: '', slug: '', description: '', icon: 'Store', active: true };
+const emptyForm: CategoryFormState = { name: '', slug: '', description: '', icon: 'Store', area_id: '', active: true };
 
 export default function CategoriesAdminPage() {
   const { selectedProgram, selectedProgramId } = useAdminProgram();
   const query = useScopedCategories(selectedProgramId);
+  const areasQuery = useScopedCategoryAreas(selectedProgramId);
+  const areas = useMemo(() => areasQuery.data ?? [], [areasQuery.data]);
+  const areaById = useMemo(() => new Map(areas.map((a) => [a.id, a])), [areas]);
   const [modal, setModal] = useState<{ mode: 'create' } | { mode: 'edit'; category: Category } | null>(null);
   const [form, setForm] = useState<CategoryFormState>(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -53,6 +64,7 @@ export default function CategoriesAdminPage() {
       slug: category.slug,
       description: category.description ?? '',
       icon: category.icon ?? 'Store',
+      area_id: category.area_id ?? '',
       active: category.active,
     });
     setFormError(null);
@@ -83,6 +95,18 @@ export default function CategoriesAdminPage() {
         return;
       }
     }
+    // FASE 6.2: área tem de pertencer ao programa atual (ou Sem área).
+    if (form.area_id) {
+      const area = areaById.get(form.area_id);
+      if (!area) {
+        setFormError('Área inválida — selecione uma área do programa atual ou "Sem área".');
+        return;
+      }
+      if (area.award_program_id !== selectedProgramId) {
+        setFormError('Esta área pertence a outro programa — associação recusada.');
+        return;
+      }
+    }
     setSaving(true);
     try {
       if (modal && 'category' in modal) {
@@ -91,6 +115,8 @@ export default function CategoriesAdminPage() {
           slug: slugify(form.slug.trim()),
           description: form.description.trim() || null,
           icon: form.icon,
+          // FASE 6.2: NULL = "Sem área" (categorias antigas preservadas).
+          area_id: form.area_id || null,
           active: form.active,
         };
         const { error } = await supabase.from('categories').update(payload).eq('id', modal.category.id);
@@ -103,6 +129,8 @@ export default function CategoriesAdminPage() {
           slug: slugify(form.slug.trim()),
           description: form.description.trim() || null,
           icon: form.icon,
+          // FASE 6.2: NULL = "Sem área".
+          area_id: form.area_id || null,
           active: form.active,
           award_program_id: selectedProgramId,
           locale: selectedProgram?.locale ?? null,
@@ -163,8 +191,19 @@ export default function CategoriesAdminPage() {
             columns={[
               { key: 'name', label: 'Categoria', render: (r) => <span className="font-medium text-white">{String(r.name)}</span> },
               { key: 'slug', label: 'Slug', render: (r) => <code className="text-xs text-slate-400">{String(r.slug)}</code> },
-              { key: 'icon', label: 'Ícone', render: (r) => <code className="text-xs text-gold-300">{String(r.icon ?? '—')}</code> },
+              {
+                key: 'area_id',
+                label: 'Área',
+                render: (r) => {
+                  const areaId = (r as unknown as Category).area_id ?? null;
+                  const area = areaId ? areaById.get(areaId) : undefined;
+                  if (!areaId) return <span className="text-xs text-slate-500">Sem área</span>;
+                  if (!area) return <code className="text-xs text-amber-300">área desconhecida</code>;
+                  return <span className="text-xs text-gold-300">{area.name}</span>;
+                },
+              },
               { key: 'locale', label: 'Locale', render: (r) => <code className="text-xs text-slate-400">{String((r as unknown as Category).locale ?? '—')}</code> },
+              { key: 'icon', label: 'Ícone', render: (r) => <code className="text-xs text-gold-300">{String((r as unknown as Category).icon ?? '—')}</code> },
               { key: 'active', label: 'Estado', render: (r) => <StatusPill active={Boolean(r.active)} /> },
               {
                 key: 'actions', label: 'Acções',
@@ -220,9 +259,17 @@ export default function CategoriesAdminPage() {
                   ))}
                 </Select>
               </Field>
-              <div className="flex items-end pb-0.5">
-                <Toggle checked={form.active} onChange={(v) => setForm({ ...form, active: v })} label="Categoria activa" />
-              </div>
+              <Field label="Área (opcional)">
+                <Select value={form.area_id} onChange={(e) => setForm({ ...form, area_id: e.target.value })}>
+                  <option value="" className="bg-navy-900">Sem área</option>
+                  {areas.map((a) => (
+                    <option key={a.id} value={a.id} className="bg-navy-900">{a.name}</option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <div className="flex items-end pb-0.5">
+              <Toggle checked={form.active} onChange={(v) => setForm({ ...form, active: v })} label="Categoria activa" />
             </div>
             <Field label="Descrição">
               <TextArea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} placeholder="Descrição curta da categoria…" />

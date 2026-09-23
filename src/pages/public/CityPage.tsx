@@ -1,12 +1,37 @@
+import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { ProgramLink, useProgram } from '../../hooks/useProgram';
 import { programPaths } from '../../lib/programRoute';
 import { ArrowLeft, ArrowRight, MapPin, Trophy, Users } from 'lucide-react';
 import { useActiveCampaign, useCity } from '../../hooks/useDirectory';
-import { useCityCategories } from '../../hooks/useEntries';
+import { useCityCategories, type CategoryWithCount } from '../../hooks/useEntries';
+import { usePublicCategoryAreas } from '../../hooks/useCategoryAreas';
+import { groupCategoriesByArea, hasUsableAreas, OTHER_CATEGORIES_LABEL } from '../../lib/categoryAreas';
 import { usePageMeta } from '../../components/PageMeta';
 import { categoryIcon } from '../../components/icons';
 import { EmptyState, LoadingGrid, PageLoading, ErrorState, Eyebrow, Badge } from '../../components/ui';
+
+function CategoryCard({ citySlug, cat }: { citySlug: string; cat: CategoryWithCount }) {
+  const Icon = categoryIcon(cat.icon);
+  return (
+    <ProgramLink
+      to={`/${citySlug}/${cat.slug}`}
+      className="card-lift group flex items-center gap-4 rounded-[14px] border border-white/[0.08] bg-white/[0.025] p-5 hover:border-gold-500/25"
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-gold-500/20 bg-gold-500/[0.08]">
+        <Icon className="h-[18px] w-[18px] text-gold-400" strokeWidth={2} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-display text-[1.05rem] font-bold text-white">{cat.name}</span>
+        <span className="mt-0.5 flex items-center gap-1.5 text-[13px] text-slate-500">
+          <Users className="h-3.5 w-3.5 text-gold-500/70" />
+          {cat.entry_count} {cat.entry_count === 1 ? 'participante' : 'participantes'}
+        </span>
+      </span>
+      <ArrowRight className="h-4 w-4 shrink-0 text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-gold-400/80" />
+    </ProgramLink>
+  );
+}
 
 export default function CityPage() {
   const { citySlug } = useParams<{ citySlug: string }>();
@@ -15,6 +40,15 @@ export default function CityPage() {
   const campaignQuery = useActiveCampaign();
   const categoriesQuery = useCityCategories(campaignQuery.data?.id, city?.id);
   const categories = categoriesQuery.data ?? [];
+  // FASE 6.2: áreas ativas do programa atual (navegação Cidade → Área →
+  // Categoria). Tabela ausente/sem áreas → [] e a experiência atual é
+  // preservada integralmente (backward-compatible).
+  const areasQuery = usePublicCategoryAreas();
+  const areaGroups = useMemo(
+    () => groupCategoriesByArea(categories, areasQuery.data ?? []),
+    [categories, areasQuery.data],
+  );
+  const grouped = hasUsableAreas(areaGroups);
   const busy = loading || campaignQuery.loading;
 
   usePageMeta(
@@ -115,30 +149,36 @@ export default function CityPage() {
             description={`As categorias de ${city.name} na edição ${year} ainda estão a ser preparadas. Volte em breve.`}
           />
         ) : (
-          <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {categories.map((cat) => {
-              const Icon = categoryIcon(cat.icon);
-              return (
-                <ProgramLink
-                  key={cat.id}
-                  to={`/${city.slug}/${cat.slug}`}
-                  className="card-lift group flex items-center gap-4 rounded-[14px] border border-white/[0.08] bg-white/[0.025] p-5 hover:border-gold-500/25"
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-gold-500/20 bg-gold-500/[0.08]">
-                    <Icon className="h-[18px] w-[18px] text-gold-400" strokeWidth={2} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-display text-[1.05rem] font-bold text-white">{cat.name}</span>
-                    <span className="mt-0.5 flex items-center gap-1.5 text-[13px] text-slate-500">
-                      <Users className="h-3.5 w-3.5 text-gold-500/70" />
-                      {cat.entry_count} {cat.entry_count === 1 ? 'participante' : 'participantes'}
+          grouped ? (
+            <div className="space-y-10">
+              {areaGroups.map((group) => (
+                <section key={group.area ? group.area.id : 'outras'} aria-label={group.area ? group.area.name : OTHER_CATEGORIES_LABEL}>
+                  <div className="mb-4 flex items-baseline gap-3">
+                    <h3 className="font-display text-xl font-bold text-white">
+                      {group.area ? group.area.name : OTHER_CATEGORIES_LABEL}
+                    </h3>
+                    <span className="text-[13px] text-slate-500">
+                      {group.categories.length} {group.categories.length === 1 ? 'categoria' : 'categorias'}
                     </span>
-                  </span>
-                  <ArrowRight className="h-4 w-4 shrink-0 text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-gold-400/80" />
-                </ProgramLink>
-              );
-            })}
-          </div>
+                  </div>
+                  {group.area?.description ? (
+                    <p className="mb-4 max-w-2xl text-[14px] leading-relaxed text-slate-500">{group.area.description}</p>
+                  ) : null}
+                  <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {group.categories.map((cat) => (
+                      <CategoryCard key={cat.id} citySlug={city.slug} cat={cat} />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : (
+            <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {categories.map((cat) => (
+                <CategoryCard key={cat.id} citySlug={city.slug} cat={cat} />
+              ))}
+            </div>
+          )
         )}
         {categories.length > 0 && (
           <div className="mt-8">

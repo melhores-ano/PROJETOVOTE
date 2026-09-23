@@ -74,6 +74,37 @@ export interface Category {
   /** FASE 5C.2: programa dono + locale. Backfill: programa Portugal / pt-PT. */
   award_program_id?: string | null;
   locale?: string | null;
+  /**
+   * FASE 6.2: área agrupadora opcional (FK → category_areas, NULL = "Sem área").
+   * Categorias existentes permanecem válidas com NULL. A categoria continua a
+   * ser a unidade eleitoral real — category_id permanece a autoridade em
+   * campaign_entries, votes e results. Área NUNCA recebe votos.
+   */
+  area_id?: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  /** Joins opcionais */
+  area?: CategoryArea | null;
+}
+
+/**
+ * FASE 6.2 — Área de categorias (agrupador/navegação, NÃO eleitoral).
+ * REGRA INEGOCIÁVEL: Área é somente camada visual/navegação
+ * (ÁREA → CATEGORIA → EMPRESAS). NÃO recebe votos, NÃO recebe
+ * campaign_entry, NUNCA aparece como category_id. categories.area_id é
+ * opcional e ON DELETE SET NULL. Isolamento por award_program
+ * (UNIQUE programa+slug); country_code NÃO substitui award_program_id.
+ * Persistência: public.category_areas (migration 0019, local).
+ */
+export interface CategoryArea {
+  id: string;
+  award_program_id: string;
+  name: string;
+  slug: string;
+  locale: string | null;
+  description: string | null;
+  sort_order: number;
   active: boolean;
   created_at: string;
   updated_at: string;
