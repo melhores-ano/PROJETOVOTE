@@ -58,6 +58,7 @@ const ModalitiesAdminPage = lazy(() => import('./pages/admin/ModalitiesAdminPage
 const DistinctionsAdminPage = lazy(() => import('./pages/admin/DistinctionsAdminPage'));
 const BusinessesAdminPage = lazy(() => import('./pages/admin/BusinessesAdminPage'));
 const EntriesAdminPage = lazy(() => import('./pages/admin/EntriesAdminPage'));
+const InvitationsAdminPage = lazy(() => import('./pages/admin/InvitationsAdminPage'));
 const CsvImportPage = lazy(() => import('./pages/admin/CsvImportPage'));
 const AuditLogPage = lazy(() => import('./pages/admin/AuditLogPage'));
 const VotesAdminPage = lazy(() => import('./pages/admin/VotesAdminPage'));
@@ -151,6 +152,7 @@ function AppRoutes() {
         <Route path="admin/distincoes" element={withMeta(<DistinctionsAdminPage />, 'Administração — Distinções')} />
         <Route path="admin/empresas" element={withMeta(<BusinessesAdminPage />, 'Administração — Empresas')} />
         <Route path="admin/participantes" element={withMeta(<EntriesAdminPage />, 'Administração — Participantes')} />
+        <Route path="admin/convites" element={withMeta(<InvitationsAdminPage />, 'Administração — Convites')} />
         <Route path="admin/importar" element={withMeta(<CsvImportPage />, 'Administração — Importação CSV')} />
         <Route path="admin/auditoria" element={withMeta(<AuditLogPage />, 'Administração — Auditoria')} />
         <Route path="admin/votos" element={withMeta(<VotesAdminPage />, 'Administração — Votos')} />

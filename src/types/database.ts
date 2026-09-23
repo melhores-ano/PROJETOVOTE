@@ -444,3 +444,56 @@ export interface EntryResult {
   category_slug: string;
   total_votes: number;
 }
+
+/**
+ * FASE 6.1 — Convite e aceitação de participantes (PRÉ-VOTAÇÃO, piloto Portugal).
+ * REGRA INEGOCIÁVEL: participant_invitations gere o funil operacional
+ * potential → contacted → accepted → confirmed (+ declined lateral) e NUNCA
+ * altera votes / vote_attempts / vote_adjustments / modality_votes /
+ * resultados / distinções / fulfillment / digital_credentials. A participação
+ * na votação é gratuita; a aceitação não implica obrigação de compra.
+ * campaign_entries continua a ser a estrutura EFETIVA da participação:
+ * só a confirmação cria/associa entry, de forma idempotente.
+ * contact_person / notes / acceptance_reference são INTERNOS (sem exposição
+ * pública). Persistência: public.participant_invitations (migration 0018).
+ */
+export type InvitationStatus =
+  | 'potential'
+  | 'contacted'
+  | 'accepted'
+  | 'declined'
+  | 'confirmed';
+
+export type InvitationContactMethod =
+  | 'phone'
+  | 'whatsapp'
+  | 'email'
+  | 'in_person'
+  | 'other';
+
+export interface ParticipantInvitation {
+  id: string;
+  campaign_id: string;
+  city_id: string;
+  category_id: string;
+  business_id: string;
+  status: InvitationStatus;
+  contacted_at: string | null;
+  accepted_at: string | null;
+  declined_at: string | null;
+  confirmed_at: string | null;
+  contact_method: InvitationContactMethod | null;
+  contact_person: string | null;
+  notes: string | null;
+  acceptance_reference: string | null;
+  campaign_entry_id: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  /** Joins opcionais */
+  campaign?: Campaign | null;
+  city?: City | null;
+  category?: Category | null;
+  business?: Business | null;
+}

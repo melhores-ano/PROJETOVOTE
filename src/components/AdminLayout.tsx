@@ -1,6 +1,6 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Megaphone, MapPin, Tags, Store, Users,
+  LayoutDashboard, Megaphone, MapPin, Tags, Store, Users, MailPlus,
   BarChart3, ShieldAlert, Settings, LogOut, Trophy, Handshake, KeyRound,
   Upload, ScrollText, Medal, BadgeCheck,
 } from 'lucide-react';
@@ -32,6 +32,7 @@ const ITEMS: NavItem[] = [
   { to: '/admin/distincoes', label: 'Distinções', icon: BadgeCheck },
   { to: '/admin/empresas', label: 'Empresas', icon: Store },
   { to: '/admin/participantes', label: 'Participantes', icon: Users },
+  { to: '/admin/convites', label: 'Convites', icon: MailPlus },
   { to: '/admin/importar', label: 'Importar CSV', icon: Upload },
   { to: '/admin/votos', label: 'Votos', icon: BarChart3 },
   { to: '/admin/resultados', label: 'Resultados', icon: Trophy },
