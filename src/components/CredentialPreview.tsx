@@ -1,15 +1,17 @@
 /**
- * THE BEST EUROPA — FASE 5C.3.15 — Pré-visualização de certificado/selo.
+ * THE BEST EUROPA — FASE 5C.3.16 — Pré-visualização de certificado/selo.
  *
  * Estados: loading · erro · credencial ausente · revogada (carimbo REVOGADO)
  * · template ausente (aviso técnico, nunca quebra a página).
  *
- * 5C.3.15:
- *  - certificado: preview landscape (proporção A4 real);
+ * 5C.3.16 (artes oficiais instaladas):
+ *  - certificado: preview landscape (proporção A4 real) sobre a arte oficial
+ *    em cover, sem deformação; eyebrow/title só no modo placeholder;
  *  - selo: preview quadrado/transparente + alternador clean/verificável;
+ *    limpo = arte pura, verificável = arte + QR + código + micro-legenda;
  *  - aviso "Arte oficial ainda não instalada — utilizando placeholder
  *    técnico." SOMENTE quando CREDENTIAL_ASSET_STATUS = placeholder;
- *    quando o PNG oficial existir (status official), o aviso desaparece.
+ *    com status official, o aviso desaparece e a arte real domina.
  */
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Download, Loader2, ShieldAlert } from 'lucide-react';

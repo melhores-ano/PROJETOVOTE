@@ -1,20 +1,37 @@
 /**
- * THE BEST EUROPA — FASE 5C.3.15 — Motor de renderização visual.
+ * THE BEST EUROPA — FASE 5C.3.16.2 — Motor de renderização visual.
  *
  * Geração client-side determinística: template + credential data → canvas →
  * PNG preview / PDF A4 landscape / PNG selo (limpo ou verificável). NUNCA
  * cria credencial nova, NUNCA escreve em votes/vote_attempts/vote_adjustments/
  * modality_votes, NUNCA altera award/commercial/fulfillment/credential status,
  * NUNCA usa Storage remoto (sem bucket novo). QR contém SOMENTE a URL pública
- * /:programPrefix/verificar/:verificationCode (sem IDs internos).
+ * /:programPrefix/verificar/:verificationCode (sem IDs internos — sem
+ * business_id, distinction_id, credential UUID, tokens ou dados privados).
  *
- * 5C.3.15 — integração das artes oficiais:
- *  - a ARTE domina o certificado; dados dinâmicos ocupam a área preta à
- *    direita (contentArea/safeArea em credentialTemplates.ts);
- *  - sem caixas brancas nem aparência de formulário — peça gráfica;
- *  - nomes longos: redução automática de font-size + wrap controlado;
- *  - QR discreto inferior-direito + legenda "Verificar autenticidade";
- *  - selo: medalhão dominante, PNG transparente, variantes clean/verifiable;
+  * 5C.3.16.2 — CORREÇÃO FINAL DO BLOCO DE AUTENTICAÇÃO (artes INTACTAS):
+  *  - CERTIFICADO em duas zonas (referência aprovada = geometria só):
+  *    ÁREA SUPERIOR/CENTRAL: intro + nome (auto-fit) + corpo (termina em
+  *    y 0.59, ANTES da autenticação, line-height 1.5). eyebrow/title NÃO
+  *    desenhados sobre a arte oficial (só placeholder). Cover SEM deformar
+  *    (pequeno crop preferido a deformação).
+  *    ÁREA INFERIOR DIREITA (à DIREITA da assinatura, assinatura isolada à
+  *    esquerda/centro): bloco 4 linhas à esquerda do QR
+  *    ("Código de verificação:" / valor / "Data de emissão:" / valor) +
+  *    QR em coluna própria na grande área preta inferior direita
+  *    (y 0.625–0.775, NUNCA ao lado/por cima do texto principal) +
+  *    "Verificar autenticidade" imediatamente abaixo do QR. Margem visual
+  *    clara corpo→autenticação. QR ≈370px @300dpi (leitura smartphone).
+  *    Edition NÃO desenhada sobre a arte oficial (só placeholder).
+ *  - SELO LIMPO: INTACTO — arte pura, sem QR, sem código, sem legenda,
+ *    sem fundo branco, contain, transparência original.
+ *  - SELO VERIFICÁVEL: composição vertical transparente — medalhão oficial
+ *    INTACTO e ligeiramente reduzido dentro do canvas (contain na faixa
+ *    superior) para libertar a faixa inferior; QR + "Verificar
+ *    autenticidade" + código FORA do medalhão, em baixo. Canvas sempre
+ *    transparente; só o próprio QR tem fundo técnico branco
+ *    (contraste/leitura); nada cobre o selo.
+ *  - Fail-safe preservado: sem PNG oficial, o placeholder técnico continua.
  *  - fonte de verdade do asset = CREDENTIAL_ASSET_STATUS (sem rede).
  */
 import QRCode from 'qrcode';
@@ -166,6 +183,62 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
     };
     img.src = src;
   });
+}
+
+/**
+ * 5C.3.16 — Desenha a arte oficial em COVER: preenche todo o canvas A4
+ * landscape SEM deformar (crop centrado do excedente). A arte oficial
+ * (1754×1241) é praticamente A4 landscape: crop negligenciável nas
+ * extremidades. Crop é sempre preferido a deformação.
+ */
+function drawImageCover(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  w: number,
+  h: number,
+): void {
+  const scale = Math.max(w / img.width, h / img.height);
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+}
+
+/**
+ * 5C.3.16 — Desenha a arte oficial em CONTAIN: cabe inteira no canvas,
+ * centrada, SEM deformar e SEM preencher fundo (o canvas do selo mantém
+ * transparência exterior — nunca fundo branco).
+ */
+function drawImageContain(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  w: number,
+  h: number,
+): void {
+  const scale = Math.min(w / img.width, h / img.height);
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+}
+
+/**
+ * 5C.3.16.1 — Desenha a arte oficial em CONTAIN dentro de um retângulo
+ * arbitrário (para o selo verificável: medalhão ligeiramente reduzido na
+ * faixa superior, libertando a faixa inferior para QR/código/legenda —
+ * NADA é desenhado POR CIMA do medalhão). Preserva proporção e
+ * transparência exterior — nunca fundo branco.
+ */
+function drawImageContainInRect(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  rx: number,
+  ry: number,
+  rw: number,
+  rh: number,
+): void {
+  const scale = Math.min(rw / img.width, rh / img.height);
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  ctx.drawImage(img, rx + (rw - dw) / 2, ry + (rh - dh) / 2, dw, dh);
 }
 
 /**
@@ -349,27 +422,53 @@ export async function renderCertificateCanvas(
   if (bg === null && options.backgroundImage === undefined) {
     bg = await loadImage(CERTIFICATE_TEMPLATE.backgroundPath);
   }
+  const official = isOfficialAsset('certificate');
   let usedPlaceholder = false;
   if (bg) {
-    ctx.drawImage(bg, 0, 0, w, h);
+    // 5C.3.16 — arte oficial em cover (sem deformação); fail-safe continua.
+    if (official) drawImageCover(ctx, bg, w, h);
+    else ctx.drawImage(bg, 0, 0, w, h);
   } else {
     paintCertificatePlaceholder(ctx, w, h);
     usedPlaceholder = true;
   }
   // Sem configuração oficial instalada, o placeholder técnico continua
   // identificado mesmo que um PNG transitório exista em cache.
-  if (!isOfficialAsset('certificate')) usedPlaceholder = true;
+  if (!official) usedPlaceholder = true;
   const t = CERTIFICATE_TEMPLATE;
-  drawWrapped(ctx, data.parentBrandName, t.fields.eyebrow, w, h, scale);
-  drawWrapped(ctx, data.headline, t.fields.title, w, h, scale);
-  drawWrapped(ctx, data.introLine, t.fields.intro, w, h, scale);
-  drawAutoFit(ctx, data.recipientName, t.fields.recipientName, w, h, scale);
-  drawWrapped(ctx, data.bodyText, t.fields.body, w, h, scale, 1.35);
-  drawWrapped(ctx, data.codeLine, t.fields.verificationCode, w, h, scale);
-  drawWrapped(ctx, data.issuedLine, t.fields.issuedAt, w, h, scale);
-  drawWrapped(ctx, data.editionLine, t.fields.edition, w, h, scale);
-  // QR verificável (URL absoluta) — discreto, inferior direito, sem
-  // sobrepor elementos importantes da arte + legenda institucional.
+  // 5C.3.16.2 — a ARTE OFICIAL já contém estrela, medalhão, título
+  // "Certificado", assinatura e decoração: eyebrow/title servem SÓ o
+  // placeholder e NUNCA vão sobre a arte real. Composição em duas zonas:
+  //   SUPERIOR/CENTRAL: intro + nome (auto-fit preservado) + corpo que
+  //   TERMINA em y 0.59, ANTES da autenticação (margem visual clara).
+  //   INFERIOR DIREITA (à DIREITA da assinatura): bloco 4 linhas à
+  //   esquerda do QR + QR na grande área preta inferior direita +
+  //   "Verificar autenticidade" imediatamente abaixo do QR. Assinatura
+  //   (esquerda/centro) permanece isolada — nada a toca/sobrepõe.
+  // Edition NÃO vai sobre a arte oficial (só placeholder).
+  if (!official) {
+    drawWrapped(ctx, data.parentBrandName, t.fields.eyebrow, w, h, scale);
+    drawWrapped(ctx, data.headline, t.fields.title, w, h, scale);
+  }
+  // ÁREA SUPERIOR/CENTRAL — texto principal (termina ANTES da autenticação).
+  drawWrapped(ctx, data.introLine, t.fields.intro, w, h, scale, 1.4);
+  drawAutoFit(ctx, data.recipientName, t.fields.recipientName, w, h, scale, 1.12);
+  drawWrapped(ctx, data.bodyText, t.fields.body, w, h, scale, 1.5);
+  if (official) {
+    // ÁREA INFERIOR DIREITA — bloco 4 linhas à esquerda do QR.
+    drawWrapped(ctx, data.verificationCodeLabel, t.fields.verificationCodeLabel, w, h, scale, 1.3);
+    drawWrapped(ctx, data.verificationCodeValue, t.fields.verificationCodeValue, w, h, scale, 1.3);
+    drawWrapped(ctx, data.issuedAtLabel, t.fields.issuedAtLabel, w, h, scale, 1.3);
+    drawWrapped(ctx, data.issuedAtValue, t.fields.issuedAtValue, w, h, scale, 1.3);
+  } else {
+    drawWrapped(ctx, data.codeLine, t.fields.verificationCode, w, h, scale, 1.3);
+    drawWrapped(ctx, data.issuedLine, t.fields.issuedAt, w, h, scale, 1.3);
+    drawWrapped(ctx, data.editionLine, t.fields.edition, w, h, scale);
+  }
+  // QR verificável (URL pública absoluta, sem IDs internos) — desce para
+  // a grande área preta inferior direita (y 0.625–0.775), coluna própria à
+  // direita da assinatura, NUNCA ao lado/por cima do texto principal.
+  // Legenda "Verificar autenticidade" imediatamente abaixo do QR.
   const absoluteUrl = absoluteVerifyUrl(originNow(), data.verifyPath);
   let qrUrl = options.qrDataUrl ?? null;
   if (qrUrl === null && options.qrDataUrl === undefined) {
@@ -417,6 +516,12 @@ function sealTexts(data: CredentialDisplayData) {
  * Renderiza o selo digital 1080×1080 (PNG com transparência preservada —
  * nunca fundo branco). O medalhão permanece visualmente dominante; texto
  * mínimo (ano + modalidade/categoria quando apropriado).
+ *
+ * 5C.3.16.1 — selo limpo oficial = arte pura INTACTA (contain integral).
+ * Selo verificável oficial = composição vertical transparente:
+ * [MEDALHÃO OFICIAL INTACTO, ligeiramente reduzido na faixa superior]
+ * [QR + "Verificar autenticidade" + código FORA do medalhão, em baixo].
+ * NADA é colocado POR CIMA do medalhão.
  */
 export async function renderSealCanvas(
   data: CredentialDisplayData,
@@ -436,21 +541,72 @@ export async function renderSealCanvas(
   if (bg === null && options.backgroundImage === undefined) {
     bg = await loadImage(tpl.backgroundPath);
   }
+  const official = isOfficialAsset('seal');
   let usedPlaceholder = false;
   if (bg) {
-    ctx.drawImage(bg, 0, 0, w, h);
+    // 5C.3.16 — arte oficial em contain sobre canvas transparente
+    // (proporção + transparência preservadas, nunca fundo branco).
+    if (official) {
+      ctx.clearRect(0, 0, w, h);
+      drawImageContain(ctx, bg, w, h);
+    } else {
+      ctx.drawImage(bg, 0, 0, w, h);
+    }
   } else {
     paintSealPlaceholder(ctx, w, h);
     usedPlaceholder = true;
   }
-  if (!isOfficialAsset('seal')) usedPlaceholder = true;
-  const f = tpl.fields;
-  const texts = sealTexts(data);
-  drawWrapped(ctx, data.parentBrandName, f.brandLine, w, h, scale);
-  drawWrapped(ctx, data.programName, f.programLine, w, h, scale);
-  drawWrapped(ctx, texts.year, f.yearLine, w, h, scale);
-  drawAutoFit(ctx, texts.distinction, f.distinctionLine, w, h, scale);
-  // VERSÃO 1 (clean): sem QR visível. VERSÃO 2 (verifiable): QR discreto.
+  if (!official) usedPlaceholder = true;
+  // 5C.3.16.1 — ARTE OFICIAL: o medalhão já contém THE BEST EUROPA,
+  // louros, estrela e três estrelas → NENHUM QR ou texto POR CIMA do
+  // medalhão. Selo limpo oficial = arte pura INTACTA. Selo verificável
+  // oficial = composição vertical transparente (medalhão intacto em cima,
+  // ligeiramente reduzido para libertar a faixa inferior + QR/código/
+  // micro-legenda FORA do medalhão, em baixo). O caminho placeholder
+  // (fail-safe) mantém o overlay textual anterior.
+  if (official && !usedPlaceholder) {
+    // Selo limpo oficial = arte pura (sem texto, sem QR, sem código,
+    // sem legenda, sem fundo branco, contain, transparência original).
+    if (variant === 'clean') {
+      if (data.status === 'revoked') {
+        drawRevokedStamp(ctx, tpl.revokedWatermark.text, tpl.revokedWatermark.typography, tpl.revokedWatermark.angleDeg, w, h, scale);
+      }
+      return { canvas, usedPlaceholder, variant };
+    }
+    // Selo verificável oficial: recompõe sem cobrir o medalhão.
+    // 1) Limpa o desenho integral e redesenha o medalhão INTACTO na
+    //    faixa superior (contain em 0 → 74% da altura).
+    if (bg && tpl.qr) {
+      ctx.clearRect(0, 0, w, h);
+      drawImageContainInRect(ctx, bg, 0, 0, w, h * 0.74);
+    }
+    // 2) Micro-legenda + código seguem na faixa inferior transparente,
+    //    ao lado do QR (fora do medalhão). QR com fundo técnico branco
+    //    SÓ à volta do próprio QR (contraste/leitura por smartphone).
+  } else {
+    const f = tpl.fields;
+    const texts = sealTexts(data);
+    drawWrapped(ctx, data.parentBrandName, f.brandLine, w, h, scale);
+    drawWrapped(ctx, data.programName, f.programLine, w, h, scale);
+    drawWrapped(ctx, texts.year, f.yearLine, w, h, scale);
+    drawAutoFit(ctx, texts.distinction, f.distinctionLine, w, h, scale);
+    if (variant === 'clean') {
+      if (data.status === 'revoked') {
+        drawRevokedStamp(ctx, tpl.revokedWatermark.text, tpl.revokedWatermark.typography, tpl.revokedWatermark.angleDeg, w, h, scale);
+      }
+      return { canvas, usedPlaceholder, variant };
+    }
+    drawWrapped(ctx, data.verificationCode, tpl.verificationCode, w, h, scale);
+    if (data.status === 'revoked') {
+      drawRevokedStamp(ctx, tpl.revokedWatermark.text, tpl.revokedWatermark.typography, tpl.revokedWatermark.angleDeg, w, h, scale);
+    }
+    return { canvas, usedPlaceholder, variant };
+  }
+  // VERSÃO 1 (clean): sem QR visível — tratado acima (arte pura).
+  // VERSÃO 2 (verifiable): composição vertical — QR FORA do medalhão,
+  // na faixa inferior transparente, com tamanho para leitura por
+  // smartphone; só o QR tem fundo técnico branco; textos discretos ao
+  // lado; nada cobre o selo.
   if (variant === 'verifiable' && tpl.qr) {
     const absoluteUrl = absoluteVerifyUrl(originNow(), data.verifyPath);
     let qrUrl = options.qrDataUrl ?? null;
@@ -470,7 +626,10 @@ export async function renderSealCanvas(
       }
     }
   }
-  drawWrapped(ctx, data.verificationCode, tpl.verificationCode, w, h, scale);
+  if (tpl.qrCaption) {
+    drawWrapped(ctx, CREDENTIAL_COPY.qrCaption, tpl.qrCaption, w, h, scale, 1.3);
+  }
+  drawWrapped(ctx, data.verificationCode, tpl.verificationCode, w, h, scale, 1.25);
   if (data.status === 'revoked') {
     drawRevokedStamp(ctx, tpl.revokedWatermark.text, tpl.revokedWatermark.typography, tpl.revokedWatermark.angleDeg, w, h, scale);
   }

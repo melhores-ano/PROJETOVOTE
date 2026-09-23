@@ -40,6 +40,16 @@ export interface CredentialDisplayData extends CredentialSubject {
   codeLine: string;
   issuedLine: string;
   editionLine: string;
+  /**
+   * 5C.3.16.2 — Bloco de autenticação inferior direito em 4 linhas
+   * (à esquerda do QR, mesma zona inferior direita, à direita da
+   * assinatura). Mantém codeLine/issuedLine legados para compat +
+   * placeholder; a arte oficial usa estes 4 campos separados.
+   */
+  verificationCodeLabel: string;
+  verificationCodeValue: string;
+  issuedAtLabel: string;
+  issuedAtValue: string;
 }
 
 export interface ResolveCredentialDataInput {
@@ -172,6 +182,10 @@ export function resolveCredentialDisplayData(input: ResolveCredentialDataInput):
     codeLine: `Código de verificação: ${input.credential.verification_code}`,
     issuedLine: `Data de emissão: ${issuedAtFormatted}`,
     editionLine: editionYear ? `${programName} — Edição ${editionYear}` : programName,
+    verificationCodeLabel: 'Código de verificação:',
+    verificationCodeValue: input.credential.verification_code,
+    issuedAtLabel: 'Data de emissão:',
+    issuedAtValue: issuedAtFormatted,
   };
 }
 

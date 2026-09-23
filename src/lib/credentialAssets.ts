@@ -1,5 +1,5 @@
 /**
- * THE BEST EUROPA — FASE 5C.3.15 — Estado dos assets oficiais.
+ * THE BEST EUROPA — FASE 5C.3.16.1 — Estado dos assets oficiais.
  *
  * Deteção simples e robusta placeholder vs arte oficial, SEM chamadas de
  * rede: fonte de verdade = CREDENTIAL_ASSET_STATUS em credentialTemplates.ts
@@ -7,10 +7,10 @@
  * quando o PNG não carrega, mas o aviso visível e a lógica de "oficial vs
  * placeholder" NÃO dependem de fetch/HEAD.
  *
- * Ativação da arte oficial:
- *   1. colocar public/brand/credentials/certificate-background.png
- *   2. colocar public/brand/credentials/seal-background.png
- *   3. mudar CREDENTIAL_ASSET_STATUS para { certificate: "official", seal: "official" }
+ * Artes oficiais INSTALADAS (5C.3.16, INTACTAS na 5C.3.16.1 — sem redesenho):
+ *   1. public/brand/credentials/certificate-background.png (1754×1241, A4 landscape)
+ *   2. public/brand/credentials/seal-background.png (1254×1254, RGBA com transparência)
+ *   3. CREDENTIAL_ASSET_STATUS = { certificate: "official", seal: "official" }
  *
  * Sem votos, sem ranking, sem pagamentos, sem banco, sem Storage.
  */

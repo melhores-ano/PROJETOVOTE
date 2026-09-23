@@ -67,6 +67,9 @@ const UsersAdminPage = lazy(() => import('./pages/admin/UsersAdminPage'));
 const SecurityAdminPage = lazy(() => import('./pages/admin/SecurityAdminPage'));
 const SettingsAdminPage = lazy(() => import('./pages/admin/SettingsAdminPage'));
 
+/* FASE 5C.3.16 — Preview DEV local/não persistente (fora do ProgramGate, sem backend). */
+const Preview516Page = lazy(() => import('./pages/dev/Preview516Page'));
+
 const PT = 'pt';
 
 /** Envolve uma página lazy com a sua meta estática de SEO. */
@@ -135,6 +138,8 @@ function ProgramMaintenanceGate() {
 function AppRoutes() {
   return (
     <Routes>
+      {/* FASE 5C.3.16 — Preview DEV local/não persistente: renderers oficiais com sample TBE-TEST-2026. Sem DB. */}
+      <Route path="dev/preview-5c316" element={withMeta(<Preview516Page />, 'Preview local 5C.3.16 — BARCOS ASTEC (DEV)')} />
       {/* Administração — intacta, SEM prefixo /pt/ */}
       <Route path="admin/login" element={withMeta(<LoginPage />, 'Administração — Iniciar sessão')} />
       <Route element={<ProtectedRoute />}>

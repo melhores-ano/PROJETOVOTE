@@ -1,45 +1,52 @@
-# Certificados e selos — templates oficiais (FASE 5C.3.15)
+# Certificados e selos — artes oficiais (FASE 5C.3.16.1)
 
 O motor visual (`src/config/credentialTemplates.ts` + `src/lib/credentialAssets.ts` +
 `src/lib/credentialRenderer.ts`) lê os fundos oficiais DESTE diretório. Trocar os
 ficheiros NÃO exige alterar lógica eleitoral, credenciais ou banco.
 
-## Onde colocar a arte oficial limpa
+As artes são usadas byte-a-byte, sem redesenho, sem SVG/CSS, sem novo logótipo.
 
-| Ficheiro definitivo | Caminho exato | Formato esperado |
+## Artes oficiais instaladas
+
+| Ficheiro definitivo | Origem do proprietário | Dimensões reais |
 |---|---|---|
-| Certificado The Best Europa (fundo limpo, SEM dados da empresa, SEM texto/datas/assinaturas) | `public/brand/credentials/certificate-background.png` | PNG, A4 horizontal (landscape), idealmente 3508×2480 (300dpi), preto + dourado |
-| Selo The Best Europa (medalhão limpo) | `public/brand/credentials/seal-background.png` | PNG com transparência, idealmente 1080×1080 |
+| `certificate-background.png` | CERTIFICADO-FINALLIMPO.png | PNG 1754×1241 (≈ A4 landscape), preto + dourado, opaco |
+| `seal-background.png` | SELO-TRANSP.png | PNG 1254×1254 quadrado, RGBA com transparência exterior (~33% pixels transparentes) |
 
-## Estado atual
+## Estado atual (5C.3.16.1 — refinamento visual final, sem redesenho)
 
-- `certificate-background.png` — AINDA NÃO colocado → o motor usa fundo técnico provisório.
-- `seal-background.png` — AINDA NÃO colocado → o motor usa medalhão técnico provisório.
+- `certificate-background.png` — INSTALADO → `CREDENTIAL_ASSET_STATUS.certificate = "official"`.
+- `seal-background.png` — INSTALADO → `CREDENTIAL_ASSET_STATUS.seal = "official"`.
+- O aviso "Arte oficial ainda não instalada — utilizando placeholder técnico."
+  está OCULTO; o Admin mostra as artes reais.
 
-ARTE OFICIAL PENDENTE DE INSTALAÇÃO (ambos os caminhos acima).
+## Estratégia de enquadramento (sem deformação)
 
-## Ativação (quando os PNGs limpos chegarem)
+- CERTIFICADO: `cover` centrado sobre o canvas A4 3508×2480. A arte
+  (ratio ≈ 1.4134) é praticamente A4 landscape (ratio ≈ 1.4145): crop
+  negligenciável nas extremidades. Crop sempre preferido a deformação.
+  O PDF final continua A4 landscape via jsPDF.
+- SELO: `contain` centrado sobre canvas 1080×1080 transparente. Proporção
+  1:1 e transparência exterior preservadas — nunca fundo branco.
 
-1. Colocar `certificate-background.png` neste diretório (arte limpa: fundo,
-   estrela, elementos dourados, medalhão The Best Europa; SEM empresa antiga,
-   SEM texto antigo, SEM data/assinatura, SEM SHOP SHOW MARKETING).
-2. Colocar `seal-background.png` neste diretório (medalhão circular dourado,
-   fundo interior verde muito escuro/preto, estrela, THE BEST EUROPA, louros,
-   três estrelas inferiores; PNG com transparência).
-3. Em `src/config/credentialTemplates.ts`, mudar `CREDENTIAL_ASSET_STATUS`
-   para `{ certificate: "official", seal: "official" }`.
-4. O aviso "Arte oficial ainda não instalada — utilizando placeholder técnico."
-   desaparece automaticamente; o sistema passa a usar as artes oficiais.
+## Zona segura do certificado (arte real)
 
-## Notas
+A arte já contém estrela, medalhão The Best Europa, título "Certificado" e
+assinatura. Os campos dinâmicos vivem SÓ na zona preta segura centro/direita
+(`contentArea`/`safeArea` em `credentialTemplates.ts`); `eyebrow`/`title` do
+template servem SÓ o modo placeholder e nunca são desenhados sobre a arte.
 
-- NÃO redesenhar a identidade. NÃO criar imitação do certificado nem novo
-  logótipo. Placeholders técnicos continuam até os PNGs oficiais limpos.
-- A arte de referência do proprietário (ex.: dados antigos de terceiros) NÃO
-  faz parte do template — os dados são sempre dinâmicos (nome, programa,
-  edição, cidade, categoria, modalidade, código, data, URL de verificação).
-- Selo limpo (sem QR, p/ website/redes/publicidade) e selo verificável (com
-  QR discreto) derivam da MESMA digital_credential — sem duplicar credenciais.
-- Geração 100% client-side, determinística, sem Storage/bucket novo.
-- Ciclos de continuação: fase revalidada (verificador 42/42, tsc limpo) sem
-  alterações funcionais; placeholders mantidos até receção dos PNGs oficiais.
+## Selo limpo vs verificável (mesma credencial)
+
+- LIMPO: arte oficial pura, sem QR, sem texto sobreposto.
+- VERIFICÁVEL: medalhão oficial intacto e ligeiramente reduzido na faixa
+  superior (contain em 0–74% da altura) + QR + verification_code +
+  micro-legenda "Verificar autenticidade" discretos na faixa inferior
+  transparente, FORA do medalhão. Só o próprio QR tem fundo técnico branco
+  (contraste/leitura); o restante do canvas continua transparente.
+
+## Fail-safe
+
+Se um PNG oficial faltar no futuro, o renderer volta ao fundo técnico
+provisório (`paintCertificatePlaceholder` / `paintSealPlaceholder`) e o
+aviso reaparece — sem quebrar a página, sem tocar em votos, banco ou Storage.
