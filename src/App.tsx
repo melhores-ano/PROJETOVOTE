@@ -50,6 +50,7 @@ const MaintenancePage = lazy(() => import('./pages/public/MaintenancePage'));
 const NotFoundPage = lazy(() => import('./pages/public/NotFoundPage'));
 
 const LoginPage = lazy(() => import('./pages/admin/LoginPage'));
+const AdminResetPasswordPage = lazy(() => import('./pages/admin/AdminResetPasswordPage'));
 const DashboardPage = lazy(() => import('./pages/admin/DashboardPage'));
 const CampaignsPage = lazy(() => import('./pages/admin/CampaignsPage'));
 const CitiesAdminPage = lazy(() => import('./pages/admin/CitiesAdminPage'));
@@ -144,6 +145,7 @@ function AppRoutes() {
       <Route path="dev/preview-5c316" element={withMeta(<Preview516Page />, 'Preview local 5C.3.16 — BARCOS ASTEC (DEV)')} />
       {/* Administração — intacta, SEM prefixo /pt/ */}
       <Route path="admin/login" element={withMeta(<LoginPage />, 'Administração — Iniciar sessão')} />
+      <Route path="admin/reset-password" element={withMeta(<AdminResetPasswordPage />, 'Administração — Recuperar palavra-passe')} />
       <Route element={<ProtectedRoute />}>
         <Route path="admin" element={withMeta(<DashboardPage />, 'Administração — Painel')} />
         <Route path="admin/campanhas" element={withMeta(<CampaignsPage />, 'Administração — Campanhas')} />

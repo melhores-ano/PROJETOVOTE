@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-export type ImageBucket = 'city-images' | 'business-logos' | 'business-covers' | 'sponsor-logos';
+export type ImageBucket = 'city-images' | 'business-logos' | 'business-covers' | 'sponsor-logos' | 'magazine-images';
 
 const MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];

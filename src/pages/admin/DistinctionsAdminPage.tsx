@@ -43,6 +43,7 @@ import {
   useScopedFulfillment,
   useScopedModalities,
 } from '../../hooks/useAdminData';
+import { useScopedPackageAdoptions } from '../../hooks/usePackageAdoptions';
 import { useAdminProgram } from '../../hooks/useAdminProgram';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import {
@@ -76,6 +77,16 @@ import {
   updateFulfillmentItem,
 } from '../../lib/fulfillment';
 import {
+  META_ADS_COLLECTIVE_NOTICE,
+  PACKAGE_ADOPTION_STATUS_LABELS,
+  PACKAGE_NON_INTERFERENCE_NOTICE,
+  PILOT_DIGITAL_PACKAGE,
+  cancelPackageAdoption,
+  createPackageAdoption,
+  formatPriceCents,
+  reactivatePackageAdoption,
+} from '../../lib/packages';
+import {
   DIGITAL_CREDENTIAL_STATUS_LABELS,
   DIGITAL_CREDENTIAL_TYPE_LABELS,
   activeCredential,
@@ -102,6 +113,7 @@ import type {
   DigitalCredential,
   DigitalCredentialType,
   DistinctionFulfillment,
+  DistinctionPackageAdoption,
   FulfillmentDeliveryMethod,
   FulfillmentItemType,
   FulfillmentStatus,
@@ -839,6 +851,157 @@ function CredentialManager({
   );
 }
 
+function packagePillClass(status: string): string {
+  if (status === 'active') return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200';
+  if (status === 'pending') return 'border-amber-500/30 bg-amber-500/10 text-amber-200';
+  if (status === 'cancelled') return 'border-red-500/30 bg-red-500/10 text-red-200';
+  return 'border-white/15 bg-white/5 text-slate-300';
+}
+
+/* ---------------------------------------------------------------------------
+ * FASE 6.3.1 — Modal de registo da adesão ao Pacote Oficial Digital.
+ * Registo ADMINISTRATIVO (sem pagamento): escreve SOMENTE em
+ * distinction_package_adoptions via createPackageAdoption (auditada).
+ * NUNCA altera award_status, commercial_status, votos, ranking, vencedor,
+ * fulfillment ou credenciais. Consentimento Meta Ads OBRIGATÓRIO
+ * (meta_ads_consent_at = now() ao marcar). Fail-closed: sem edição válida
+ * → registo bloqueado.
+ * ------------------------------------------------------------------------- */
+
+function PackageAdoptionModal({
+  distinction,
+  businessName,
+  cityName,
+  categoryName,
+  modalityName,
+  hasCampaign,
+  onChanged,
+  onClose,
+}: {
+  distinction: AwardDistinction;
+  businessName: string;
+  cityName: string;
+  categoryName: string;
+  modalityName: string | null;
+  hasCampaign: boolean;
+  onChanged: () => void;
+  onClose: () => void;
+}) {
+  const [consented, setConsented] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!hasCampaign) {
+      setError('Sem edição válida — registo bloqueado (fail-closed).');
+      return;
+    }
+    if (!consented) {
+      setError('O consentimento da campanha patrocinada conjunta é obrigatório.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const result = await createPackageAdoption(
+        {
+          award_distinction_id: distinction.id,
+          metaAdsConsented: true,
+          notes: notes.trim() === '' ? null : notes.trim(),
+        },
+        distinction,
+      );
+      if (result.duplicate) {
+        setError('Esta distinção já possui uma adesão registada.');
+        return;
+      }
+      onChanged();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao registar a adesão.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title="Registar adesão ao Pacote Oficial Digital" onClose={onClose} wide>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <FormError message={error} />
+        <dl className="grid grid-cols-2 gap-2 text-[13px]">
+          <dt className="text-slate-500">Empresa</dt>
+          <dd className="font-semibold text-white">{businessName}</dd>
+          <dt className="text-slate-500">Cidade</dt>
+          <dd className="text-slate-200">{cityName}</dd>
+          <dt className="text-slate-500">Categoria</dt>
+          <dd className="text-slate-200">{categoryName}</dd>
+          <dt className="text-slate-500">Distinção</dt>
+          <dd className="text-slate-200">{modalityName ?? '—'}</dd>
+        </dl>
+        <div className="rounded-2xl border border-gold-500/20 bg-gold-500/[0.05] p-4 text-[13px] leading-relaxed">
+          <p className="text-slate-500">Pacote</p>
+          <p className="font-semibold text-white">{PILOT_DIGITAL_PACKAGE.package_name}</p>
+          <p className="mt-1 text-slate-300">
+            Valor: <strong className="text-white">{formatPriceCents(PILOT_DIGITAL_PACKAGE.price_cents, PILOT_DIGITAL_PACKAGE.currency)}</strong>
+            {' '}· Formato: <strong className="text-white">100% digital</strong>
+          </p>
+          <ul className="mt-2 space-y-1 text-slate-200">
+            <li>✓ Certificado Digital Oficial</li>
+            <li>✓ Verificação pública por QR Code</li>
+            <li>✓ Selo Digital Oficial 2026</li>
+            <li>✓ Kit Digital do Vencedor</li>
+            <li>✓ Divulgação The Best Europa</li>
+            <li>✓ Participação na campanha patrocinada conjunta de 15 dias</li>
+          </ul>
+        </div>
+        <p role="note" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs leading-relaxed text-amber-200">
+          AVISO META ADS: {META_ADS_COLLECTIVE_NOTICE}
+        </p>
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-navy-950/60 px-3.5 py-2.5 text-xs leading-relaxed text-slate-200">
+          <input
+            type="checkbox"
+            checked={consented}
+            onChange={(e) => setConsented(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-yellow-500"
+          />
+          <span>A empresa foi informada e aceitou a participação na campanha patrocinada conjunta.</span>
+        </label>
+        <Field label="Notas internas (opcional)">
+          <TextArea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            placeholder="Notas administrativas da adesão… (nunca públicas)"
+          />
+        </Field>
+        <p role="note" className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3.5 py-2.5 text-xs leading-relaxed text-sky-200">
+          {PACKAGE_NON_INTERFERENCE_NOTICE}
+        </p>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-xl border border-white/15 px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={saving || !consented || !hasCampaign}
+            title="Registar adesão — 49,90 €"
+            className="rounded-xl bg-gold-gradient px-6 py-2.5 text-sm font-semibold text-navy-950 shadow-award transition hover:brightness-110 disabled:opacity-50"
+          >
+            {saving ? 'A registar…' : `Registar adesão — ${formatPriceCents(PILOT_DIGITAL_PACKAGE.price_cents, PILOT_DIGITAL_PACKAGE.currency)}`}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export default function DistinctionsAdminPage() {
   const {
     selectedProgram,
@@ -897,6 +1060,10 @@ export default function DistinctionsAdminPage() {
 
   // FASE 5C.3.13 — credenciais verificáveis (certificado/selo).
   const [credentialTarget, setCredentialTarget] = useState<AwardDistinction | null>(null);
+
+  // FASE 6.3.1 — adesão ao Pacote Oficial Digital (camada comercial separada).
+  const [packageTarget, setPackageTarget] = useState<AwardDistinction | null>(null);
+  const [packageBusyId, setPackageBusyId] = useState<string | null>(null);
 
   const [rowError, setRowError] = useState<string | null>(null);
   const [busyRowId, setBusyRowId] = useState<string | null>(null);
@@ -1095,6 +1262,17 @@ export default function DistinctionsAdminPage() {
     [credentialsQuery.data],
   );
 
+  // FASE 6.3.1 — mapa distinção → adesão ao Pacote Oficial Digital.
+  // Isolado por campanha/programa porque os IDs vêm de `distinctions`
+  // (já filtradas por selectedCampaignId + programa). Fail-closed: sem
+  // distinções → {} (hook retorna vazio, nunca global). A adesão NUNCA
+  // altera mérito, comercial, votos, ranking, vencedor ou resultados.
+  const packageQuery = useScopedPackageAdoptions(distinctionIds);
+  const packageByDistinction = useMemo(
+    () => packageQuery.data ?? {},
+    [packageQuery.data],
+  );
+
   const loading =
     citiesQuery.loading ||
     categoriesQuery.loading ||
@@ -1189,6 +1367,41 @@ export default function DistinctionsAdminPage() {
       );
     } finally {
       setBusyRowId(null);
+    }
+  }
+
+  async function handleCancelPackage(d: AwardDistinction, adoption: DistinctionPackageAdoption) {
+    setRowError(null);
+    if (!hasCampaign) {
+      setRowError('Sem edição válida — alteração bloqueada (fail-closed).');
+      return;
+    }
+    setPackageBusyId(d.id);
+    try {
+      // O cancelamento comercial preserva mérito, votos, ranking e vitória.
+      await cancelPackageAdoption(adoption, null);
+      packageQuery.refetch();
+    } catch (e) {
+      setRowError(e instanceof Error ? e.message : 'Falha ao cancelar a adesão.');
+    } finally {
+      setPackageBusyId(null);
+    }
+  }
+
+  async function handleReactivatePackage(d: AwardDistinction, adoption: DistinctionPackageAdoption) {
+    setRowError(null);
+    if (!hasCampaign) {
+      setRowError('Sem edição válida — alteração bloqueada (fail-closed).');
+      return;
+    }
+    setPackageBusyId(d.id);
+    try {
+      await reactivatePackageAdoption(adoption);
+      packageQuery.refetch();
+    } catch (e) {
+      setRowError(e instanceof Error ? e.message : 'Falha ao reativar a adesão.');
+    } finally {
+      setPackageBusyId(null);
     }
   }
 
@@ -1646,6 +1859,64 @@ export default function DistinctionsAdminPage() {
                     },
                   },
                   {
+                    key: 'package',
+                    label: 'Pacote Digital',
+                    render: (r) => {
+                      const d = r as unknown as AwardDistinction;
+                      const adoption = packageByDistinction[d.id] ?? null;
+                      const busy = packageBusyId === d.id;
+                      if (!adoption) {
+                        return (
+                          <span className="flex min-w-44 flex-col gap-1.5">
+                            <span className="text-[11px] text-slate-500" title="Sem adesão registada">—</span>
+                            <button
+                              type="button"
+                              onClick={() => setPackageTarget(d)}
+                              disabled={!hasCampaign}
+                              title="Registar adesão ao Pacote Oficial Digital"
+                              className="inline-flex w-fit items-center gap-1 rounded-lg border border-gold-500/40 bg-gold-500/10 px-2.5 py-1 text-xs font-semibold text-gold-300 transition hover:bg-gold-500/20 disabled:opacity-40"
+                            >
+                              Registar adesão
+                            </button>
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="flex min-w-44 flex-col gap-1.5">
+                          <span className={`inline-flex w-fit items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${packagePillClass(adoption.status)}`}>
+                            {PACKAGE_ADOPTION_STATUS_LABELS[adoption.status] ?? adoption.status}
+                          </span>
+                          <span className="text-[11px] text-slate-400" title={`${adoption.package_code} · ${formatPriceCents(adoption.price_cents, adoption.currency)}`}>
+                            {adoption.package_code} · {formatPriceCents(adoption.price_cents, adoption.currency)}
+                          </span>
+                          <span className="flex flex-wrap gap-1.5">
+                            {adoption.status !== 'cancelled' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleCancelPackage(d, adoption)}
+                                disabled={!hasCampaign || busy}
+                                title="Cancelar adesão (preserva mérito, votos e vitória)"
+                                className="inline-flex items-center gap-1 rounded-lg border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-200 transition hover:bg-red-500/20 disabled:opacity-40"
+                              >
+                                {busy ? '…' : 'Cancelar adesão'}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleReactivatePackage(d, adoption)}
+                                disabled={!hasCampaign || busy}
+                                title="Reativar adesão"
+                                className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:opacity-40"
+                              >
+                                {busy ? '…' : 'Reativar'}
+                              </button>
+                            )}
+                          </span>
+                        </span>
+                      );
+                    },
+                  },
+                  {
                     key: 'notes',
                     label: 'Notas',
                     render: (r) => {
@@ -1692,7 +1963,8 @@ export default function DistinctionsAdminPage() {
               <p className="mt-3 text-xs leading-relaxed text-slate-500">
                 Recusa comercial (Recusado) apenas guarda o estado e a auditoria — nunca
                 altera o mérito, nunca transfere prémios, nunca promove o segundo colocado,
-                nunca altera votos ou rankings.
+                nunca altera votos ou rankings. {PACKAGE_NON_INTERFERENCE_NOTICE} O
+                cancelamento da adesão nunca retira a vitória.
               </p>
             </AdminCard>
           </div>
@@ -1811,6 +2083,25 @@ export default function DistinctionsAdminPage() {
             credentialsQuery.refetch();
           }}
           onClose={() => setCredentialTarget(null)}
+        />
+      )}
+
+      {/* FASE 6.3.1 — registar adesão ao Pacote Oficial Digital (registo
+          administrativo, sem pagamento). Escreve SOMENTE em
+          distinction_package_adoptions; nunca altera mérito, comercial,
+          votos, ranking, vencedor ou resultados públicos. */}
+      {packageTarget && (
+        <PackageAdoptionModal
+          distinction={packageTarget}
+          businessName={businessById.get(packageTarget.business_id)?.name ?? 'empresa'}
+          cityName={cityById.get(packageTarget.city_id)?.name ?? '—'}
+          categoryName={categoryById.get(packageTarget.category_id)?.name ?? '—'}
+          modalityName={modalityById.get(packageTarget.modality_id)?.name ?? null}
+          hasCampaign={hasCampaign}
+          onChanged={() => {
+            packageQuery.refetch();
+          }}
+          onClose={() => setPackageTarget(null)}
         />
       )}
     </div>

@@ -452,6 +452,124 @@ export interface DigitalCredential {
   metadata: Record<string, unknown> | null;
 }
 
+/**
+ * FASE 6.3.1 — Adesão voluntária ao Pacote Oficial Digital (piloto Braga 2026).
+ * REGRA INEGOCIÁVEL: resultado eleitoral, distinção/mérito e adesão comercial
+ * são três camadas INDEPENDENTES. Registar/cancelar a adesão altera SOMENTE
+ * distinction_package_adoptions — NUNCA votes, vote_attempts,
+ * vote_adjustments, modality_votes, modality_vote_attempts, campaign_entries,
+ * ranking, award_status, commercial_status, fulfillment, digital_credentials,
+ * vencedor ou resultados públicos. SEM pagamento nesta fase (SEM Stripe/MB
+ * WAY/Multibanco/checkout; SEM paid/unpaid/payment_pending).
+ * Piloto: package_code TBE-DIGITAL-2026, 4990 cents, EUR, 100% digital.
+ * Persistência: public.distinction_package_adoptions (migration 0020, local).
+ */
+export type PackageAdoptionType =
+  | 'digital'
+  | 'physical'
+  | 'hybrid';
+
+export type PackageAdoptionStatus =
+  | 'pending'
+  | 'active'
+  | 'cancelled';
+
+/** FASE 6.3.1: adesão comercial voluntária (distinction_package_adoptions). */
+export interface DistinctionPackageAdoption {
+  id: string;
+  award_distinction_id: string;
+  package_code: string;
+  package_type: PackageAdoptionType;
+  package_name: string;
+  price_cents: number;
+  currency: string;
+  status: PackageAdoptionStatus;
+  adopted_at: string | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
+  includes_certificate: boolean;
+  includes_digital_seal: boolean;
+  includes_digital_kit: boolean;
+  includes_publication: boolean;
+  includes_meta_ads: boolean;
+  meta_ads_consent_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * FASE 6.4.1 — Revista Digital Oficial (fundação de dados, SEM superfície
+ * pública nesta fase).
+ * REGRA INEGOCIÁVEL: RESULTADO ELEITORAL ≠ ADESÃO COMERCIAL ≠ PUBLICAÇÃO
+ * EDITORIAL. A revista NUNCA determina vencedor, NUNCA altera ranking,
+ * votos, award_status, commercial_status, fulfillment ou digital_credentials.
+ * Elegibilidade EDITORIAL: adoption.status = 'active' AND
+ * adoption.includes_publication = true. meta_ads_consent_at e
+ * includes_meta_ads NUNCA condicionam a revista (desacoplado de Meta Ads).
+ * Persistência: public.magazine_editions / magazine_features /
+ * magazine_images (migration 0021, local). Arquitetura genérica — SEM
+ * hardcode de cidade/ano/país/programa.
+ */
+export type MagazineEditionStatus =
+  | 'draft'
+  | 'published'
+  | 'archived';
+
+/** FASE 6.4.1: edição editorial (UMA revista POR campaign × city). */
+export interface MagazineEdition {
+  id: string;
+  award_program_id: string;
+  campaign_id: string;
+  city_id: string;
+  slug: string;
+  title: string;
+  subtitle: string | null;
+  introduction: string | null;
+  cover_image_url: string | null;
+  status: MagazineEditionStatus;
+  published_at: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** FASE 6.4.1: matéria/destaque editorial de UMA empresa (UMA POR distinção). */
+export interface MagazineFeature {
+  id: string;
+  magazine_edition_id: string;
+  award_distinction_id: string;
+  package_adoption_id: string | null;
+  editorial_slug: string;
+  title: string;
+  subtitle: string | null;
+  body: string | null;
+  cover_image_url: string | null;
+  address_snapshot: string | null;
+  phone_snapshot: string | null;
+  website_snapshot: string | null;
+  instagram_snapshot: string | null;
+  facebook_snapshot: string | null;
+  cta_label: string | null;
+  cta_url: string | null;
+  show_official_seal: boolean;
+  editorial_order: number;
+  is_published: boolean;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** FASE 6.4.1: imagem da galeria editorial (UMA linha POR imagem). */
+export interface MagazineImage {
+  id: string;
+  magazine_feature_id: string;
+  image_url: string;
+  caption: string | null;
+  sort_order: number;
+  created_at: string;
+}
+
 /** Configuração agregada do sítio (lida a partir de site_settings) */
 export interface SiteConfig {
   siteName: string;
