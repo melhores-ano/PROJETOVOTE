@@ -69,6 +69,8 @@ const SponsorsAdminPage = lazy(() => import('./pages/admin/SponsorsAdminPage'));
 const UsersAdminPage = lazy(() => import('./pages/admin/UsersAdminPage'));
 const SecurityAdminPage = lazy(() => import('./pages/admin/SecurityAdminPage'));
 const SettingsAdminPage = lazy(() => import('./pages/admin/SettingsAdminPage'));
+const MagazineAdminPage = lazy(() => import('./pages/admin/MagazineAdminPage'));
+const MagazineEditionPage = lazy(() => import('./pages/admin/MagazineEditionPage'));
 
 /* FASE 5C.3.16 — Preview DEV local/não persistente (fora do ProgramGate, sem backend). */
 const Preview516Page = lazy(() => import('./pages/dev/Preview516Page'));
@@ -162,6 +164,8 @@ function AppRoutes() {
         <Route path="admin/votos" element={withMeta(<VotesAdminPage />, 'Administração — Votos')} />
         <Route path="admin/resultados" element={withMeta(<ResultsAdminPage />, 'Administração — Resultados')} />
         <Route path="admin/patrocinadores" element={withMeta(<SponsorsAdminPage />, 'Administração — Patrocinadores')} />
+        <Route path="admin/revistas" element={withMeta(<MagazineAdminPage />, 'Administração — Revistas')} />
+        <Route path="admin/revistas/:editionId" element={withMeta(<MagazineEditionPage />, 'Administração — Gerir revista')} />
         <Route element={<RequireSuperAdmin />}>
           <Route path="admin/utilizadores" element={withMeta(<UsersAdminPage />, 'Administração — Utilizadores')} />
         </Route>

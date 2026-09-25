@@ -2,7 +2,7 @@ import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Megaphone, MapPin, Tags, LayoutGrid, Store, Users, MailPlus,
   BarChart3, ShieldAlert, Settings, LogOut, Trophy, Handshake, KeyRound,
-  Upload, ScrollText, Medal, BadgeCheck,
+  Upload, ScrollText, Medal, BadgeCheck, BookOpen,
 } from 'lucide-react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/AuthContext';
@@ -38,6 +38,7 @@ const ITEMS: NavItem[] = [
   { to: '/admin/votos', label: 'Votos', icon: BarChart3 },
   { to: '/admin/resultados', label: 'Resultados', icon: Trophy },
   { to: '/admin/patrocinadores', label: 'Patrocinadores', icon: Handshake },
+  { to: '/admin/revistas', label: 'Revistas', icon: BookOpen },
   { to: '/admin/utilizadores', label: 'Utilizadores', icon: KeyRound, superOnly: true },
   { to: '/admin/seguranca', label: 'Segurança', icon: ShieldAlert },
   { to: '/admin/auditoria', label: 'Auditoria', icon: ScrollText },
