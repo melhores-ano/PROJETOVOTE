@@ -126,7 +126,7 @@ export function ModalityVoteStep(props: Props) {
                 </div>
 
                 <label className="mt-4 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Escolher restaurante
+                  Escolher participante
                   <select
                     value={selectedEntryId}
                     disabled={!campaignOpen || voted}
