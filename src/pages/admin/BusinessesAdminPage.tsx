@@ -11,7 +11,7 @@
  * - Empresa ≠ participação: a ligação empresa+edição+categoria continua
  *   em campaign_entries / Participantes. Mudar de edição nunca duplica.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pencil, Plus } from 'lucide-react';
 import { useScopedBusinesses, useScopedCategories, useScopedCities } from '../../hooks/useAdminData';
 import { useAdminProgram } from '../../hooks/useAdminProgram';
@@ -50,6 +50,54 @@ const emptyForm: BusinessFormState = {
   city_id: '', category_ids: [], active: true, verified: false,
 };
 
+const CREATE_DRAFT_PREFIX = 'the-best-europa:business-create-draft';
+
+function createDraftKey(programId: string | null): string | null {
+  return programId ? `${CREATE_DRAFT_PREFIX}:${programId}` : null;
+}
+
+function readCreateDraft(programId: string | null): Partial<BusinessFormState> | null {
+  const key = createDraftKey(programId);
+  if (!key) return null;
+
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
+
+    return parsed as Partial<BusinessFormState>;
+  } catch {
+    window.localStorage.removeItem(key);
+    return null;
+  }
+}
+
+function writeCreateDraft(programId: string | null, value: BusinessFormState): void {
+  const key = createDraftKey(programId);
+  if (!key) return;
+
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // O rascunho nunca deve bloquear o formulário.
+  }
+}
+
+function removeCreateDraft(programId: string | null): void {
+  const key = createDraftKey(programId);
+  if (!key) return;
+
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // O rascunho nunca deve bloquear o formulário.
+  }
+}
 export default function BusinessesAdminPage() {
   const { selectedProgram, selectedProgramId } = useAdminProgram();
   const countryCode = selectedProgram?.country_code ?? null;
@@ -67,10 +115,28 @@ export default function BusinessesAdminPage() {
   const categories = categoriesQuery.data ?? [];
   const validCityIds = new Set(cities.map((c) => c.id));
 
+  useEffect(() => {
+    if (modal?.mode !== 'create' || !selectedProgramId) return;
+    writeCreateDraft(selectedProgramId, form);
+  }, [form, modal?.mode, selectedProgramId]);
+
   function openCreate() {
-    setForm({ ...emptyForm, city_id: cities[0]?.id ?? '' });
+    const restored = readCreateDraft(selectedProgramId);
+
+    setForm(
+      restored
+        ? { ...emptyForm, ...restored, city_id: restored.city_id ?? (cities[0]?.id ?? '') }
+        : { ...emptyForm, city_id: cities[0]?.id ?? '' },
+    );
+
     setFormError(null);
     setModal({ mode: 'create' });
+  }
+
+  function clearCreateDraft() {
+    removeCreateDraft(selectedProgramId);
+    setForm({ ...emptyForm, city_id: cities[0]?.id ?? '' });
+    setFormError(null);
   }
 
   async function openEdit(business: Business) {
@@ -170,6 +236,9 @@ export default function BusinessesAdminPage() {
           .from('business_categories')
           .insert(scopedCategoryIds.map((category_id) => ({ business_id: businessId, category_id })));
         if (error) throw error;
+      }
+      if (modal?.mode === 'create') {
+        removeCreateDraft(selectedProgramId);
       }
       setModal(null);
       query.refetch();
@@ -358,6 +427,17 @@ export default function BusinessesAdminPage() {
               <Toggle checked={form.active} onChange={(v) => setForm({ ...form, active: v })} label="Empresa activa" />
               <Toggle checked={form.verified} onChange={(v) => setForm({ ...form, verified: v })} label="Negócio verificado" />
             </div>
+            {modal.mode === 'create' && (
+              <div className="flex justify-start">
+                <button
+                  type="button"
+                  onClick={clearCreateDraft}
+                  className="text-xs text-slate-500 underline-offset-2 hover:text-gold-300 hover:underline"
+                >
+                  Limpar rascunho
+                </button>
+              </div>
+            )}
             <FormActions onCancel={() => setModal(null)} saving={saving} />
           </form>
         </Modal>
