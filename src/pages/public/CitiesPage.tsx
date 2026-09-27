@@ -17,7 +17,7 @@ export default function CitiesPage() {
       <SectionHeading
         eyebrow="Onde votar"
         title={<>Escolha a sua cidade</>}
-        description="Centenas de cidades portuguesas participam nos Melhores do Ano. Encontre a sua e descubra os negócios nomeados."
+        description="Descubra as cidades participantes nos Melhores do Ano e conheça os negócios que estão em votação."
       />
 
       <div className="mx-auto mb-10 flex max-w-xl items-center gap-2 rounded-[12px] border border-white/10 bg-white/[0.04] p-1.5 pl-3.5 backdrop-blur transition focus-within:border-gold-500/40">

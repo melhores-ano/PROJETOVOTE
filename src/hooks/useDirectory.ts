@@ -113,13 +113,37 @@ export function useCities() {
     // Programa por resolver → erro → fallback PT (nunca lista global).
     const program = await resolveEffectiveProgram(supabase, scope);
     if (!program) throw new Error('program-unresolved');
+    const { data: campaign, error: campaignError } = await supabase
+      .from('campaigns')
+      .select('id')
+      .eq('award_program_id', program.id)
+      .eq('status', 'votacao')
+      .maybeSingle();
+
+    if (campaignError) throw campaignError;
+    if (!campaign) return [];
+
+    const { data: entries, error: entriesError } = await supabase
+      .from('campaign_entries')
+      .select('city_id')
+      .eq('campaign_id', campaign.id)
+      .eq('active', true);
+
+    if (entriesError) throw entriesError;
+
+    const cityIds = [...new Set((entries ?? []).map((entry) => entry.city_id).filter(Boolean))];
+    if (cityIds.length === 0) return [];
+
     const { data, error } = await supabase
       .from('cities')
       .select('*')
+      .in('id', cityIds)
       .eq('active', true)
       .eq('country_code', program.country_code)
       .order('name', { ascending: true });
+
     if (error) throw error;
+
     // Defesa em profundidade: filtra de novo no cliente.
     return ((data ?? []) as City[]).filter((c) => belongsToCountry(c.country_code, program.country_code));
   }, fallbackCities, [key]);
