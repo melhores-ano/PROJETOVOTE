@@ -239,8 +239,15 @@ Deno.serve(async (req: Request) => {
   };
 
   // ---- Coerência cross-program (fail-closed) ----
-  // Modalidade tem de pertencer à MESMA categoria do voto.
-  if (m.category_id !== e.category_id) {
+  // Modalidade tem de estar associada à categoria do voto através da relação N:N.
+  const { data: modalityCategory, error: modalityCategoryError } = await supabase
+    .from("award_modality_categories")
+    .select("modality_id")
+    .eq("modality_id", m.id)
+    .eq("category_id", e.category_id)
+    .maybeSingle();
+
+  if (modalityCategoryError || !modalityCategory) {
     await logAttempt("invalido", "modality_category_mismatch", ids);
     return json("invalid_modality", 422);
   }

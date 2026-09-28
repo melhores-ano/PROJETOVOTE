@@ -24,10 +24,20 @@ export function useCategoryModalities(categoryId: string | undefined) {
       if (!categoryId) return [];
       const program = await resolveEffectiveProgram(supabase, scope);
       if (!program) return [];
+      const { data: categoryLinks, error: categoryLinksError } = await supabase
+        .from('award_modality_categories')
+        .select('modality_id')
+        .eq('category_id', categoryId);
+
+      if (categoryLinksError) throw categoryLinksError;
+
+      const modalityIds = (categoryLinks ?? []).map((link) => link.modality_id);
+      if (modalityIds.length === 0) return [];
+
       const { data, error } = await supabase
         .from('award_modalities')
         .select('*')
-        .eq('category_id', categoryId)
+        .in('id', modalityIds)
         .eq('award_program_id', program.id)
         .eq('active', true)
         .order('position', { ascending: true })
