@@ -420,11 +420,10 @@ export function useScopedModalities(
       if (!supabase) return [];
       let q = supabase
         .from('award_modalities')
-        .select('*, category:categories(id, name, slug)')
+        .select('*, category:categories!award_modalities_category_id_fkey(id, name, slug)')
         .eq('award_program_id', programId)
         .order('position')
         .order('name');
-      if (categoryId) q = q.eq('category_id', categoryId);
       const { data, error } = await q;
       if (error) {
         // Tabela ainda não aplicada no remoto (migration 0014 pendente de
@@ -434,9 +433,49 @@ export function useScopedModalities(
         }
         throw error;
       }
-      return ((data ?? []) as AwardModality[]).filter(
-        (m) => belongsToProgram(m.award_program_id, programId),
-      );
+    const modalities = ((data ?? []) as AwardModality[]).filter(
+      (m) => belongsToProgram(m.award_program_id, programId),
+    );
+
+    if (modalities.length === 0) return [];
+
+    const modalityIds = modalities.map((m) => m.id);
+
+    const { data: categoryLinks, error: categoryLinksError } = await supabase
+      .from('award_modality_categories')
+      .select('modality_id, category_id')
+      .in('modality_id', modalityIds);
+
+    if (categoryLinksError) throw categoryLinksError;
+
+    const categoryIdsByModality = new Map<string, string[]>();
+
+    for (const link of categoryLinks ?? []) {
+      const current = categoryIdsByModality.get(link.modality_id) ?? [];
+      current.push(link.category_id);
+      categoryIdsByModality.set(link.modality_id, current);
+    }
+
+    const enrichedModalities = modalities.map((modality) => {
+      const linkedCategoryIds = categoryIdsByModality.get(modality.id) ?? [];
+      const category_ids =
+        linkedCategoryIds.length > 0
+          ? linkedCategoryIds
+          : modality.category_id
+            ? [modality.category_id]
+            : [];
+
+      return {
+        ...modality,
+        category_ids,
+      };
+    });
+
+    if (categoryId) {
+      return enrichedModalities.filter((m) => m.category_ids?.includes(categoryId));
+    }
+
+    return enrichedModalities;
     },
     [],
     [programId ?? null, categoryId ?? null],

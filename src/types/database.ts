@@ -158,7 +158,10 @@ export interface CampaignEntry {
   /** Joins opcionais */
   campaign?: Campaign | null;
   city?: City | null;
+  /** Join legado da categoria principal. */
   category?: Category | null;
+  /** Categorias associadas à modalidade. */
+  categories?: Category[];
   business?: Business | null;
 }
 
@@ -302,7 +305,10 @@ export type CommercialStatus =
 export interface AwardModality {
   id: string;
   award_program_id: string;
+  /** Categoria principal legada. Mantida por compatibilidade. */
   category_id: string;
+  /** Categorias associadas à modalidade através de award_modality_categories. */
+  category_ids?: string[];
   name: string;
   slug: string;
   description: string | null;
@@ -312,7 +318,10 @@ export interface AwardModality {
   created_at: string;
   updated_at: string;
   /** Joins opcionais */
+  /** Join legado da categoria principal. */
   category?: Category | null;
+  /** Categorias associadas à modalidade. */
+  categories?: Category[];
 }
 
 /** FASE 5C.3.8: DISTINÇÃO atribuída numa edição (award_distinctions). */
@@ -643,6 +652,9 @@ export interface ParticipantInvitation {
   /** Joins opcionais */
   campaign?: Campaign | null;
   city?: City | null;
+  /** Join legado da categoria principal. */
   category?: Category | null;
+  /** Categorias associadas à modalidade. */
+  categories?: Category[];
   business?: Business | null;
 }

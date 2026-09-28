@@ -29,7 +29,7 @@ import { PageLoading, ErrorState } from '../../components/ui';
 const ICON_SUGGESTIONS = ['Award', 'Star', 'Sparkles', 'HeartHandshake', 'UtensilsCrossed', 'Coffee', 'Medal', 'Crown'];
 
 interface ModalityFormState {
-  category_id: string;
+  category_ids: string[];
   name: string;
   slug: string;
   description: string;
@@ -39,7 +39,7 @@ interface ModalityFormState {
 }
 
 const emptyForm: ModalityFormState = {
-  category_id: '',
+  category_ids: [],
   name: '',
   slug: '',
   description: '',
@@ -90,14 +90,14 @@ export default function ModalitiesAdminPage() {
   }, [modalitiesQuery.data, categoryFilter, statusFilter]);
 
   function openCreate() {
-    setForm({ ...emptyForm, category_id: categoryFilter !== 'all' ? categoryFilter : '' });
+    setForm({ ...emptyForm, category_ids: categoryFilter !== 'all' ? [categoryFilter] : [] });
     setFormError(null);
     setModal({ mode: 'create' });
   }
 
   function openEdit(modality: AwardModality) {
     setForm({
-      category_id: modality.category_id,
+      category_ids: modality.category_ids?.length ? modality.category_ids : [modality.category_id],
       name: modality.name,
       slug: modality.slug,
       description: modality.description ?? '',
@@ -120,13 +120,13 @@ export default function ModalitiesAdminPage() {
       setFormError('Sem programa válido — fail-closed: selecione um programa no seletor global antes de criar modalidades.');
       return;
     }
-    if (!form.category_id) {
-      setFormError('Selecione uma categoria do programa atual.');
+    if (form.category_ids.length === 0) {
+      setFormError('Selecione pelo menos uma categoria do programa atual.');
       return;
     }
     // Defesa: categoria de outro programa nunca é aceite.
-    const chosen = categoryById.get(form.category_id);
-    if (!chosen || (chosen.award_program_id ?? null) !== selectedProgramId) {
+    const chosenCategories = form.category_ids.map((id) => categoryById.get(id));
+    if (chosenCategories.some((chosen) => !chosen || (chosen.award_program_id ?? null) !== selectedProgramId)) {
       setFormError('Esta categoria não pertence ao programa selecionado — criação recusada.');
       return;
     }
@@ -143,7 +143,7 @@ export default function ModalitiesAdminPage() {
       if (modal && 'modality' in modal) {
         const payload = {
           // award_program_id NUNCA editável manualmente: deriva-se da categoria.
-          category_id: form.category_id,
+          category_id: form.category_ids[0],
           name: form.name.trim(),
           slug: slugify(form.slug.trim()),
           description: form.description.trim() || null,
@@ -153,6 +153,23 @@ export default function ModalitiesAdminPage() {
         };
         const { error } = await supabase.from('award_modalities').update(payload).eq('id', modal.modality.id);
         if (error) throw error;
+
+      const { error: deleteCategoriesError } = await supabase
+        .from('award_modality_categories')
+        .delete()
+        .eq('modality_id', modal.modality.id);
+      if (deleteCategoriesError) throw deleteCategoriesError;
+
+      const { error: insertCategoriesError } = await supabase
+        .from('award_modality_categories')
+        .insert(
+          form.category_ids.map((categoryId) => ({
+            modality_id: modal.modality.id,
+            category_id: categoryId,
+          })),
+        );
+      if (insertCategoriesError) throw insertCategoriesError;
+
         await audit('award_modality.update', 'award_modalities', modal.modality.id, {
           name: payload.name,
           category_id: payload.category_id,
@@ -162,7 +179,7 @@ export default function ModalitiesAdminPage() {
         // award_program_id DERIVADO do contexto (nunca input manual).
         const payload = {
           award_program_id: selectedProgramId,
-          category_id: form.category_id,
+          category_id: form.category_ids[0],
           name: form.name.trim(),
           slug: slugify(form.slug.trim()),
           description: form.description.trim() || null,
@@ -172,6 +189,18 @@ export default function ModalitiesAdminPage() {
         };
         const { data, error } = await supabase.from('award_modalities').insert(payload).select('id').single();
         if (error) throw error;
+
+      const modalityId = (data as { id: string }).id;
+      const { error: categoriesError } = await supabase
+        .from('award_modality_categories')
+        .insert(
+          form.category_ids.map((categoryId) => ({
+            modality_id: modalityId,
+            category_id: categoryId,
+          })),
+        );
+      if (categoriesError) throw categoriesError;
+
         await audit('award_modality.create', 'award_modalities', (data as { id: string }).id, {
           name: payload.name,
           category_id: payload.category_id,
@@ -341,18 +370,43 @@ export default function ModalitiesAdminPage() {
               Programa: <strong className="text-white">{selectedProgram?.name}</strong> (atribuído automaticamente —
               sem seleção manual de programa).
             </p>
-            <Field label="Categoria (somente do programa atual)">
-              <Select
-                value={form.category_id}
-                onChange={(e) => setForm({ ...form, category_id: e.target.value })}
-                required
-              >
-                <option value="" className="bg-navy-900">Selecionar categoria…</option>
-                {categories.map((c: Category) => (
-                  <option key={c.id} value={c.id} className="bg-navy-900">{c.name}</option>
-                ))}
-              </Select>
-            </Field>
+              <Field label="Categorias (somente do programa atual)">
+                <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-700 bg-navy-950/50 p-3">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {categories.map((c: Category) => {
+                      const checked = form.category_ids.includes(c.id);
+
+                      return (
+                        <label
+                          key={c.id}
+                          className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-200 hover:bg-white/5"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() =>
+                              setForm({
+                                ...form,
+                                category_ids: checked
+                                  ? form.category_ids.filter((id) => id !== c.id)
+                                  : [...form.category_ids, c.id],
+                              })
+                            }
+                            className="h-4 w-4 accent-amber-400"
+                          />
+                          <span>{c.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  {form.category_ids.length > 0 && (
+                    <div className="mt-3 border-t border-slate-700 pt-2 text-xs text-slate-400">
+                      {form.category_ids.length} categoria{form.category_ids.length === 1 ? '' : 's'} selecionada{form.category_ids.length === 1 ? '' : 's'}
+                    </div>
+                  )}
+                </div>
+              </Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Nome">
                 <TextInput
