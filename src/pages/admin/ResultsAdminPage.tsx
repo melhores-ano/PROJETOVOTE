@@ -103,8 +103,8 @@ export default function ResultsAdminPage() {
   const programIdForModalities = adminCtx ? (adminCtx.selectedProgramId ?? null) : null;
   const modalitiesQuery = useScopedModalities(programIdForModalities, categoryId || null);
   const modalitiesOfCategory = useMemo(
-    () => (modalitiesQuery.data ?? []).filter((m) => !categoryId || m.category_id === categoryId),
-    [modalitiesQuery.data, categoryId],
+    () => modalitiesQuery.data ?? [],
+    [modalitiesQuery.data],
   );
   const modalityTally = useAdminModalityTally(campaignId, cityId, categoryId, modalityId);
 
