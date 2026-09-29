@@ -106,6 +106,7 @@ import {
   downloadSealPng,
 } from '../../lib/credentialRenderer';
 import { CredentialPreview, type CredentialPreviewKind } from '../../components/CredentialPreview';
+import { WinnerDigitalKit } from '../../components/WinnerDigitalKit';
 import type {
   AwardDistinction,
   AwardStatus,
@@ -1061,6 +1062,9 @@ export default function DistinctionsAdminPage() {
   // FASE 5C.3.13 — credenciais verificáveis (certificado/selo).
   const [credentialTarget, setCredentialTarget] = useState<AwardDistinction | null>(null);
 
+  // FASE 6.6 — Kit Digital do Vencedor.
+  const [kitTarget, setKitTarget] = useState<AwardDistinction | null>(null);
+
   // FASE 6.3.1 — adesão ao Pacote Oficial Digital (camada comercial separada).
   const [packageTarget, setPackageTarget] = useState<AwardDistinction | null>(null);
   const [packageBusyId, setPackageBusyId] = useState<string | null>(null);
@@ -1843,7 +1847,7 @@ export default function DistinctionsAdminPage() {
                         <span className="flex min-w-44 flex-col gap-1.5">
                           {row('certificate', 'Certificado', cert)}
                           {row('digital_seal', 'Selo digital', seal)}
-                          <span className="flex gap-1.5">
+                          <span className="flex flex-wrap gap-1.5">
                             <button
                               type="button"
                               onClick={() => setCredentialTarget(d)}
@@ -1853,6 +1857,19 @@ export default function DistinctionsAdminPage() {
                             >
                               {creds.length > 0 ? 'Ver credenciais' : 'Gerar credencial'}
                             </button>
+
+                            {cert &&
+                              seal &&
+                              packageByDistinction[d.id]?.status === 'active' && (
+                                <button
+                                  type="button"
+                                  onClick={() => setKitTarget(d)}
+                                  title="Abrir Kit Digital do Vencedor"
+                                  className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
+                                >
+                                  Kit Digital
+                                </button>
+                              )}
                           </span>
                         </span>
                       );
@@ -2090,6 +2107,71 @@ export default function DistinctionsAdminPage() {
           administrativo, sem pagamento). Escreve SOMENTE em
           distinction_package_adoptions; nunca altera mérito, comercial,
           votos, ranking, vencedor ou resultados públicos. */}
+      {kitTarget && (() => {
+        const kitCredentials = credentialsByDistinction[kitTarget.id] ?? [];
+        const kitCertificate = activeCredential(kitCredentials, 'certificate');
+        const kitSeal = activeCredential(kitCredentials, 'digital_seal');
+
+        if (!kitCertificate || !kitSeal) return null;
+
+        const businessName =
+          businessById.get(kitTarget.business_id)?.name ?? 'empresa';
+
+        const buildKitData = (
+          credential: DigitalCredential,
+        ): CredentialDisplayData =>
+          resolveCredentialDisplayData({
+            credential: {
+              credential_type: credential.credential_type,
+              verification_code: credential.verification_code,
+              issued_at: credential.issued_at,
+              status: credential.status,
+            },
+            distinctionLabel:
+              modalityById.get(kitTarget.modality_id)?.name ??
+              categoryById.get(kitTarget.category_id)?.name ??
+              'Distinção',
+            businessName,
+            parentBrandName: 'The Best Europa',
+            programName:
+              selectedProgram?.name ?? 'Melhores do Ano Portugal',
+            campaignYear: selectedCampaign?.year ?? null,
+            campaignName: selectedCampaign?.name ?? null,
+            cityName: cityById.get(kitTarget.city_id)?.name ?? '—',
+            categoryName:
+              categoryById.get(kitTarget.category_id)?.name ?? '—',
+            modalityName:
+              modalityById.get(kitTarget.modality_id)?.name ?? null,
+            programPrefix: 'pt',
+          });
+
+        return (
+          <Modal
+            title="Kit Digital do Vencedor"
+            onClose={() => setKitTarget(null)}
+            wide
+          >
+            <WinnerDigitalKit
+              certificate={buildKitData(kitCertificate)}
+              seal={buildKitData(kitSeal)}
+              onVerifyCertificate={() =>
+                window.open(
+                  `${window.location.origin}/#/pt/verificar/${kitCertificate.verification_code}`,
+                  '_blank',
+                  'noopener,noreferrer',
+                )
+              }
+              onVerifySeal={() =>
+                window.open(
+                  `${window.location.origin}/#/pt/verificar/${kitSeal.verification_code}`,
+                  '_blank',
+                  'noopener,noreferrer',
+                )
+              }
+            />
+          </Modal>
+        );
+      })()}
       {packageTarget && (
         <PackageAdoptionModal
           distinction={packageTarget}

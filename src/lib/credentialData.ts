@@ -193,7 +193,7 @@ export function resolveCredentialDisplayData(input: ResolveCredentialDataInput):
 export function absoluteVerifyUrl(origin: string, verifyPath: string): string {
   const base = (origin ?? '').replace(/\/+$/, '');
   const path = verifyPath.startsWith('/') ? verifyPath : `/${verifyPath}`;
-  return `${base}${path}`;
+  return `${base}/#${path}`;
 }
 
 /** Nome de ficheiro seguro (sem acentos, sem espaços, sem IDs internos). */
