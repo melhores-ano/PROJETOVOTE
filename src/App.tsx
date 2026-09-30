@@ -46,6 +46,7 @@ const RulesPage = lazy(() => import('./pages/public/RulesPage'));
 const PrivacyPage = lazy(() => import('./pages/public/PrivacyPage'));
 const ContactPage = lazy(() => import('./pages/public/ContactPage'));
 const VerifyPage = lazy(() => import('./pages/public/VerifyPage'));
+const MagazinePage = lazy(() => import('./pages/public/MagazinePage'));
 const MaintenancePage = lazy(() => import('./pages/public/MaintenancePage'));
 const NotFoundPage = lazy(() => import('./pages/public/NotFoundPage'));
 
@@ -190,6 +191,16 @@ function AppRoutes() {
           {/* FASE 5C.3.13 — verificação pública de certificados/selos (program-aware, fail-closed). */}
           <Route path="verificar" element={withMeta(<VerifyPage />, 'Verificar certificado ou selo', 'Verifique a autenticidade de um certificado ou selo digital The Best Europa.', programPaths.verify(PT))} />
           <Route path="verificar/:verificationCode" element={withMeta(<VerifyPage />, 'Verificar certificado ou selo', 'Verifique a autenticidade de um certificado ou selo digital The Best Europa.')} />
+          {/* FASE 6.7.1 — Revista Digital pública. */}
+          <Route
+            path="revista/:magazineSlug"
+            element={withMeta(
+              <MagazinePage />,
+              'Revista Digital — The Best Europa',
+              'Revista Digital The Best Europa — Melhores do Ano Portugal.',
+            )}
+          />
+
           {/* Rotas de compatibilidade sob o prefixo (padrão antigo) */}
           <Route path=":citySlug" element={withMeta(<CityPage />, 'Cidade participante')} />
           <Route path=":citySlug/:categorySlug" element={withMeta(<CategoryPage />, 'Categoria a concurso')} />
