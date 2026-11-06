@@ -12,7 +12,7 @@ const checks = [
   ['transaction begins and commits', /^begin;[\s\S]*commit;\s*$/im.test(sql)],
   ['only categories update', (sql.match(/\bupdate\s+public\.[a-z_]+/gi) ?? []).length === 1 && /update\s+public\.categories\s+c/i.test(sql)],
   ['only area_id assigned', /set\s+area_id\s*=\s*a\.id/i.test(sql)],
-  ['program scoped', /p\.slug\s*=\s*'melhores-do-ano-portugal'/i.test(sql) && /c\.award_program_id\s*=\s*v_program/i.test(sql)],
+  ['program scoped', /where\s+slug\s*=\s*'melhores-do-ano-portugal'/i.test(sql) && /c\.award_program_id\s*=\s*v_program/i.test(sql)],
   ['three explicit categories', ['cafes', 'ginasios', 'saloes-de-beleza'].every(s => sql.includes("'"+s+"'"))],
   ['three explicit target areas', ['restauracao-gastronomia', 'saude-bem-estar', 'beleza-estetica'].every(s => sql.includes("'"+s+"'"))],
   ['fail closed on missing categories', /esperadas 3 categorias/.test(sql)],
