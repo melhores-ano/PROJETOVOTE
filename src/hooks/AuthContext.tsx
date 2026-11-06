@@ -114,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { ok: false, message };
     }
     const p = await loadProfile(data.user.id);
-    if (!p) {
+    if (!p || (p.role !== 'admin' && p.role !== 'super_admin')) {
       await supabase.auth.signOut();
       const message = 'Esta conta não tem permissões de administração.';
       setAuthError(message);
