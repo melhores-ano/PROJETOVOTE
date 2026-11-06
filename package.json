@@ -31,7 +31,8 @@
     "audit:migrations": "node scripts/audit-migration-inventory.mjs",
     "test:audit:migrations": "node scripts/test-audit-migration-inventory.mjs",
     "test:legacy-migrations": "node scripts/test-legacy-migration-guard.mjs",
-    "test:auth": "node scripts/test-auth-guards.mjs"
+    "test:auth": "node scripts/test-auth-guards.mjs",
+    "test:voting-ui": "node scripts/test-voting-ui-guards.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
