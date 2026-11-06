@@ -28,6 +28,8 @@ const checks = [
   ['query hides results from previous scope', /data: resolvedKey === key \? data : null/.test(query)],
   ['query stays loading until current scope resolves', /loading: loading \|\| resolvedKey !== key/.test(query)],
   ['admin vote attempts use selected edition', /useVoteAttempts\(outcome, 200, campaignId\)/.test(adminVotes)],
+  ['admin async data hides previous scope', /data: resolvedKey === key \? data : initial/.test(adminData)],
+  ['admin async data waits for current scope', /loading: loading \|\| resolvedKey !== key/.test(adminData)],
   ['antifraud query filters by campaign', /q = q\.eq\('campaign_id', campaignId\)/.test(adminData)],
   ['category waits for validated settings', /!votingSettings\.loading && !votingSettings\.error && votingSettings\.data\?\.votingEnabled === true/.test(category)],
 ];
