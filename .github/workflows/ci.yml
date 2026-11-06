@@ -34,6 +34,8 @@ jobs:
         run: npm run test:csv
       - name: Migration inventory regression tests
         run: npm run test:audit:migrations
+      - name: Offline migration history reconciliation regression tests
+        run: npm run test:reconcile:migrations
       - name: Authentication route and session guard checks
         run: npm run test:auth
       - name: Legacy migration replay safety tests
