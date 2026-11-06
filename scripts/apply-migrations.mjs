@@ -64,6 +64,16 @@ function recommend(errText) {
   return 'Corrigir a causa indicada pelo Postgres, SEM editar a migration antiga; se for preciso ajuste, criar uma nova migration 0010_* aditiva.';
 }
 
+// Segurança: este utilitário legado reaplica 0001–0009 sem consultar o histórico remoto.
+// Não permitir execução acidental num backend já migrado. A flag não substitui
+// reconciliação, backup e aprovação explícita para qualquer ambiente real.
+if (!process.argv.includes('--confirm-legacy-replay')) {
+  console.error('BLOQUEADO: este script reaplica migrations antigas sem verificar o histórico remoto.');
+  console.error('Não executar em produção. Reconciliar primeiro as versões existentes.');
+  console.error('Para testes isolados e conscientes: --confirm-legacy-replay');
+  process.exit(5);
+}
+
 console.log('=== Aplicar migrations ao backend REAL (ordem fixa) ===');
 const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
 console.log('Ficheiros no disco:', files.join(', '));
