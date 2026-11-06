@@ -10,6 +10,9 @@ const modality = read('src/hooks/useModalityVoting.ts');
 const settings = read('src/hooks/useVotingSettings.ts');
 const category = read('src/pages/public/CategoryPage.tsx');
 const modal = read('src/components/VoteModal.tsx');
+const query = read('src/hooks/usePublicQuery.ts');
+const adminVotes = read('src/pages/admin/VotesAdminPage.tsx');
+const adminData = read('src/hooks/useAdminData.ts');
 
 const checks = [
   ['main vote synchronous in-flight guard', /submittingRef\.current\) return;/.test(main)],
@@ -22,6 +25,10 @@ const checks = [
   ['missing voting flag defaults to disabled', /asBool\(map\.get\('voting_enabled'\), false\)/.test(settings)],
   ['captcha key required when enabled', /!captchaEnabled \|\| siteKey\.length > 0/.test(settings)],
   ['confirmation requires CAPTCHA key and token', /turnstileEnabled && \(!turnstileSiteKey \|\| !captchaToken\)/.test(modal)],
+  ['query hides results from previous scope', /data: resolvedKey === key \? data : null/.test(query)],
+  ['query stays loading until current scope resolves', /loading: loading \|\| resolvedKey !== key/.test(query)],
+  ['admin vote attempts use selected edition', /useVoteAttempts\(outcome, 200, campaignId\)/.test(adminVotes)],
+  ['antifraud query filters by campaign', /q = q\.eq\('campaign_id', campaignId\)/.test(adminData)],
   ['category waits for validated settings', /!votingSettings\.loading && !votingSettings\.error && votingSettings\.data\?\.votingEnabled === true/.test(category)],
 ];
 
