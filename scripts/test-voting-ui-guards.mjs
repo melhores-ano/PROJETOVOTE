@@ -31,6 +31,10 @@ const checks = [
   ['admin async data hides previous scope', /data: resolvedKey === key \? data : initial/.test(adminData)],
   ['admin async data waits for current scope', /loading: loading \|\| resolvedKey !== key/.test(adminData)],
   ['antifraud query filters by campaign', /q = q\.eq\('campaign_id', campaignId\)/.test(adminData)],
+  ['admin rankings show loading before empty state', /overview\.loading \? \(\s*<PageLoading label="A carregar repartição/.test(adminVotes)],
+  ['admin timeline distinguishes missing edition', /noEdition \? \(\s*<p[^>]*>Selecione uma edição para consultar a evolução/.test(adminVotes)],
+  ['admin events distinguish missing edition', /noEdition \? \(\s*<p[^>]*>Selecione uma edição para consultar os eventos/.test(adminVotes)],
+  ['admin summary does not show on missing edition', /!overview\.error && !noEdition/.test(adminVotes)],
   ['category waits for validated settings', /!votingSettings\.loading && !votingSettings\.error && votingSettings\.data\?\.votingEnabled === true/.test(category)],
 ];
 
