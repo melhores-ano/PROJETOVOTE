@@ -19,6 +19,7 @@ function useAsync<T>(loader: () => Promise<T>, initial: T, deps: unknown[] = [])
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  const [resolvedKey, setResolvedKey] = useState<string | null>(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const key = JSON.stringify(deps);
 
@@ -28,12 +29,19 @@ function useAsync<T>(loader: () => Promise<T>, initial: T, deps: unknown[] = [])
     let cancelled = false;
     (async () => {
       setLoading(true);
+      setResolvedKey(null);
       setError(null);
       try {
         const result = await loader();
-        if (!cancelled) setData(result);
+        if (!cancelled) {
+          setData(result);
+          setResolvedKey(key);
+        }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Falha ao carregar.');
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Falha ao carregar.');
+          setResolvedKey(key);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -44,7 +52,12 @@ function useAsync<T>(loader: () => Promise<T>, initial: T, deps: unknown[] = [])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nonce, key]);
 
-  return { data, loading, error, refetch };
+  return {
+    data: resolvedKey === key ? data : initial,
+    loading: loading || resolvedKey !== key,
+    error: resolvedKey === key ? error : null,
+    refetch,
+  };
 }
 
 /* ---------- audit_logs (leitura admin) ---------- */
