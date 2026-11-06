@@ -100,7 +100,7 @@ export default function CategoryPage() {
   const Icon = categoryIcon(category.icon);
   const entries = entriesQuery.data ?? [];
   const entriesLoading = entriesQuery.loading || campaignQuery.loading;
-  const votingEnabled = votingSettings.data?.votingEnabled ?? true;
+  const votingEnabled = !votingSettings.loading && !votingSettings.error && votingSettings.data?.votingEnabled === true;
   const campaignOpen =
     votingEnabled &&
     !!campaign &&

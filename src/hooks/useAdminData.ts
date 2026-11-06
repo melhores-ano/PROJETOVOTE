@@ -19,6 +19,7 @@ function useAsync<T>(loader: () => Promise<T>, initial: T, deps: unknown[] = [])
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  const [resolvedKey, setResolvedKey] = useState<string | null>(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const key = JSON.stringify(deps);
 
@@ -28,12 +29,19 @@ function useAsync<T>(loader: () => Promise<T>, initial: T, deps: unknown[] = [])
     let cancelled = false;
     (async () => {
       setLoading(true);
+      setResolvedKey(null);
       setError(null);
       try {
         const result = await loader();
-        if (!cancelled) setData(result);
+        if (!cancelled) {
+          setData(result);
+          setResolvedKey(key);
+        }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Falha ao carregar.');
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Falha ao carregar.');
+          setResolvedKey(key);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -44,7 +52,12 @@ function useAsync<T>(loader: () => Promise<T>, initial: T, deps: unknown[] = [])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nonce, key]);
 
-  return { data, loading, error, refetch };
+  return {
+    data: resolvedKey === key ? data : initial,
+    loading: loading || resolvedKey !== key,
+    error: resolvedKey === key ? error : null,
+    refetch,
+  };
 }
 
 /* ---------- audit_logs (leitura admin) ---------- */
@@ -181,14 +194,15 @@ export interface VoteAttemptRow {
   business: string | null;
 }
 
-export function useVoteAttempts(outcome: VoteAttemptOutcome | 'all', limit = 200): AsyncState<VoteAttemptRow[]> {
+export function useVoteAttempts(outcome: VoteAttemptOutcome | 'all', limit = 200, campaignId?: string): AsyncState<VoteAttemptRow[]> {
   return useAsync<VoteAttemptRow[]>(async () => {
-    if (!supabase) return [];
+    if (!supabase || !campaignId) return [];
     let q = supabase
       .from('vote_attempts')
       .select('id, outcome, reason, created_at, campaign:campaigns(year), city:cities(name), category:categories(name), business:businesses(name)')
       .order('created_at', { ascending: false })
       .limit(limit);
+    q = q.eq('campaign_id', campaignId);
     if (outcome !== 'all') q = q.eq('outcome', outcome);
     const { data, error } = await q;
     if (error) throw error;
@@ -206,7 +220,7 @@ export function useVoteAttempts(outcome: VoteAttemptOutcome | 'all', limit = 200
       category: r.category?.name ?? null,
       business: r.business?.name ?? null,
     }));
-  }, [], [outcome, limit]);
+  }, [], [outcome, limit, campaignId ?? null]);
 }
 
 /* ---------- Contagem de votos + tally por participante (só leitura admin) ---------- */

@@ -64,6 +64,16 @@ function recommend(errText) {
   return 'Corrigir a causa indicada pelo Postgres, SEM editar a migration antiga; se for preciso ajuste, criar uma nova migration 0010_* aditiva.';
 }
 
+// Segurança: este utilitário legado reaplica 0001–0009 sem consultar o histórico remoto.
+// Não permitir execução acidental num backend já migrado nem em servidores remotos. A flag não substitui
+// reconciliação, backup e aprovação explícita para qualquer ambiente real.
+if (!process.argv.includes('--confirm-legacy-replay')) {
+  console.error('BLOQUEADO: este script reaplica migrations antigas sem verificar o histórico remoto.');
+  console.error('Não executar em produção. Reconciliar primeiro as versões existentes.');
+  console.error('Apenas para base de testes local: --confirm-legacy-replay');
+  process.exit(5);
+}
+
 console.log('=== Aplicar migrations ao backend REAL (ordem fixa) ===');
 const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
 console.log('Ficheiros no disco:', files.join(', '));
@@ -75,15 +85,21 @@ if (missing.length > 0) {
 }
 
 const dbUrl = process.env.DATABASE_URL ?? '';
-if (!dbUrl || dbUrl.includes('[YOUR-PASSWORD]') || dbUrl.includes('[ref]')) {
-  console.error('\nPARE — DATABASE_URL com password real não configurada.');
-  console.error('A DDL (CREATE TABLE/POLICY/FUNCTION) não pode ser aplicada via REST/anon key.');
-  console.error('\nAÇÃO MANUAL NECESSÁRIA (1 min por ficheiro):');
-  console.error('  Dashboard Supabase (melhores-do-ano-portugal) > SQL Editor > New query,');
-  console.error('  colar e correr POR ORDEM:');
-  for (const f of ORDER) console.error(`    ${f}`);
-  console.error('  Depois: node scripts/verify-real-backend.mjs');
+if (!dbUrl) {
+  console.error('BLOQUEADO: DATABASE_URL não configurada. Este script é exclusivo de bases de testes locais.');
   process.exit(2);
+}
+let target;
+try {
+  target = new URL(dbUrl);
+} catch {
+  console.error('BLOQUEADO: DATABASE_URL inválida.');
+  process.exit(2);
+}
+const localHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+if (!['postgres:', 'postgresql:'].includes(target.protocol) || !localHosts.has(target.hostname)) {
+  console.error('BLOQUEADO: este script legado só pode correr numa base PostgreSQL local de testes.');
+  process.exit(8);
 }
 
 // Verificar psql disponível
@@ -92,6 +108,23 @@ if (check.error || check.status !== 0) {
   console.error('\nPARE — `psql` não encontrado no PATH e DATABASE_URL foi fornecida.');
   console.error('Instalar PostgreSQL client ou usar o SQL Editor (ver instruções acima).');
   process.exit(3);
+}
+
+// Preflight obrigatório: nunca repetir migrations já registadas no destino.
+// Se a tabela de histórico não puder ser consultada, falhar em segurança.
+const history = spawnSync('psql', [dbUrl, '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c',
+  "SELECT version FROM supabase_migrations.schema_migrations WHERE version IN ('0001','0002','0003','0004','0005','0006','0007','0008','0009') ORDER BY version"],
+  { encoding: 'utf8' });
+if (history.error || history.status !== 0) {
+  console.error('BLOQUEADO: não foi possível verificar o histórico remoto de migrations.');
+  console.error((history.stderr ?? history.error?.message ?? '').slice(0, 1000));
+  process.exit(6);
+}
+const applied = history.stdout.trim().split(/\r?\n/).filter(Boolean);
+if (applied.length > 0) {
+  console.error('BLOQUEADO: o destino já contém migrations registadas:', applied.join(', '));
+  console.error('Este script legado não faz reconciliação e não pode ser usado neste destino.');
+  process.exit(7);
 }
 
 for (const f of ORDER) {

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import type { AdminRole, Profile } from '../types/database';
 
@@ -22,6 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const authGeneration = useRef(0);
 
   const loadProfile = useCallback(async (uid: string): Promise<Profile | null> => {
     if (!supabase) return null;
@@ -31,19 +32,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setTimeout(() => reject(new Error('profile-timeout')), 6000),
       );
       const { data, error } = await Promise.race([query, timeout]);
-      if (error) {
-        setAuthError('Não foi possível carregar o perfil de administrador.');
-        return null;
-      }
+      if (error) return null;
       return (data as Profile) ?? null;
     } catch {
-      setAuthError('Não foi possível carregar o perfil de administrador.');
       return null;
     }
   }, []);
 
   useEffect(() => {
     let cancelled = false;
+    const initialGeneration = authGeneration.current;
     async function init() {
       if (!supabase) {
         setLoading(false);
@@ -58,43 +56,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data } = await Promise.race([sessionPromise, timeout]);
         const session = data.session;
         if (!session?.user) {
-          if (!cancelled) setLoading(false);
+          if (!cancelled && initialGeneration === authGeneration.current) setLoading(false);
           return;
         }
         const p = await loadProfile(session.user.id);
-        if (!cancelled) {
+        if (!cancelled && initialGeneration === authGeneration.current) {
           setUserId(session.user.id);
           setEmail(session.user.email ?? null);
           setProfile(p);
+          setAuthError(p ? null : 'Não foi possível validar as permissões de administração.');
           setLoading(false);
         }
       } catch (err) {
         console.warn('[auth] init com fallback (sem sessão):', err);
-        if (!cancelled) setLoading(false);
+        if (!cancelled && initialGeneration === authGeneration.current) setLoading(false);
       }
     }
     init();
 
     if (!supabase) return;
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    // Supabase recomenda não aguardar chamadas à API dentro do callback de Auth:
+    // podem bloquear o processamento de eventos de autenticação.
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      const generation = ++authGeneration.current;
       if (!session?.user) {
         setUserId(null);
         setEmail(null);
         setProfile(null);
+        setAuthError(null);
         setLoading(false);
         return;
       }
+      const uid = session.user.id;
+      const userEmail = session.user.email ?? null;
       setLoading(true);
-      const p = await loadProfile(session.user.id);
-      if (!cancelled) {
-        setUserId(session.user.id);
-        setEmail(session.user.email ?? null);
-        setProfile(p);
-        setLoading(false);
-      }
+      // Executar a leitura do perfil fora do callback de Auth.
+      setTimeout(() => {
+        if (cancelled) return;
+        void loadProfile(uid).then((p) => {
+          if (cancelled || generation !== authGeneration.current) return;
+          setUserId(uid);
+          setEmail(userEmail);
+          setProfile(p);
+          setAuthError(p ? null : 'Não foi possível validar as permissões de administração.');
+          setLoading(false);
+        });
+      }, 0);
     });
     return () => {
       cancelled = true;
+      authGeneration.current++;
       sub.subscription.unsubscribe();
     };
   }, [loadProfile]);
@@ -113,8 +124,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthError(message);
       return { ok: false, message };
     }
+    const generation = authGeneration.current;
     const p = await loadProfile(data.user.id);
-    if (!p) {
+    if (generation !== authGeneration.current) {
+      return { ok: false, message: 'A sessão foi alterada durante a validação. Tente novamente.' };
+    }
+    if (!p || (p.role !== 'admin' && p.role !== 'super_admin')) {
       await supabase.auth.signOut();
       const message = 'Esta conta não tem permissões de administração.';
       setAuthError(message);
@@ -123,14 +138,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserId(data.user.id);
     setEmail(data.user.email ?? null);
     setProfile(p);
+    setAuthError(null);
     return { ok: true, message: 'Sessão iniciada com sucesso.' };
   }, [loadProfile]);
 
   const signOut = useCallback(async () => {
-    if (supabase) await supabase.auth.signOut();
+    ++authGeneration.current;
+    // Revogar imediatamente o acesso na interface, mesmo que a rede falhe.
     setUserId(null);
     setEmail(null);
     setProfile(null);
+    setAuthError(null);
+    setLoading(false);
+    if (supabase) {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        setAuthError('Não foi possível terminar a sessão no servidor. Tente novamente.');
+        throw error;
+      }
+    }
   }, []);
 
   const value = useMemo<AuthContextValue>(() => ({

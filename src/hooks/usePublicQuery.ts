@@ -59,6 +59,8 @@ export function usePublicQuery<T>(fetcher: () => Promise<T>, fallback: T, deps: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  // Identifica o âmbito dos dados apresentados, mesmo antes de o efeito iniciar.
+  const [resolvedKey, setResolvedKey] = useState<string | null>(null);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -69,12 +71,14 @@ export function usePublicQuery<T>(fetcher: () => Promise<T>, fallback: T, deps: 
 
     async function run() {
       setLoading(true);
+      setResolvedKey(null);
       setError(null);
       if (!supabase) {
         // Sem configuração: preview imediato com dados de recurso.
         await new Promise((r) => setTimeout(r, 350));
         if (!cancelled) {
           setData(fallback);
+          setResolvedKey(key);
           setLoading(false);
         }
         return;
@@ -86,12 +90,16 @@ export function usePublicQuery<T>(fetcher: () => Promise<T>, fallback: T, deps: 
           setTimeout(() => reject(new Error('Tempo limite ao carregar dados.')), 8000),
         );
         const result = await Promise.race([fetcher(), timeout]);
-        if (!cancelled) setData(result);
+        if (!cancelled) {
+          setData(result);
+          setResolvedKey(key);
+        }
       } catch (e) {
         if (!cancelled) {
           // FASE 4F.4: propaga o erro original do Supabase (message/details/hint/code).
           setError(toQueryErrorMessage(e));
           setData(fallback);
+          setResolvedKey(key);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -105,7 +113,12 @@ export function usePublicQuery<T>(fetcher: () => Promise<T>, fallback: T, deps: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nonce, key]);
 
-  return { data, loading, error, refetch };
+  return {
+    data: resolvedKey === key ? data : null,
+    loading: loading || resolvedKey !== key,
+    error: resolvedKey === key ? error : null,
+    refetch,
+  };
 }
 
 export { supabase };
