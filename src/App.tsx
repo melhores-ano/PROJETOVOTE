@@ -145,7 +145,9 @@ function AppRoutes() {
   return (
     <Routes>
       {/* FASE 5C.3.16 — Preview DEV local/não persistente: renderers oficiais com sample TBE-TEST-2026. Sem DB. */}
-      <Route path="dev/preview-5c316" element={withMeta(<Preview516Page />, 'Preview local 5C.3.16 — BARCOS ASTEC (DEV)')} />
+      {import.meta.env.DEV && (
+        <Route path="dev/preview-5c316" element={withMeta(<Preview516Page />, 'Preview local 5C.3.16 — BARCOS ASTEC (DEV)')} />
+      )}
       {/* Administração — intacta, SEM prefixo /pt/ */}
       <Route path="admin/login" element={withMeta(<LoginPage />, 'Administração — Iniciar sessão')} />
       <Route path="admin/reset-password" element={withMeta(<AdminResetPasswordPage />, 'Administração — Recuperar palavra-passe')} />
