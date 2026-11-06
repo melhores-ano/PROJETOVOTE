@@ -124,7 +124,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthError(message);
       return { ok: false, message };
     }
+    const generation = authGeneration.current;
     const p = await loadProfile(data.user.id);
+    if (generation !== authGeneration.current) {
+      return { ok: false, message: 'A sessão foi alterada durante a validação. Tente novamente.' };
+    }
     if (!p || (p.role !== 'admin' && p.role !== 'super_admin')) {
       await supabase.auth.signOut();
       const message = 'Esta conta não tem permissões de administração.';
