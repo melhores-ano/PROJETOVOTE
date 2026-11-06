@@ -82,8 +82,14 @@ function AdminShell() {
   const visibleItems = ITEMS.filter((item) => !item.superOnly || role === 'super_admin');
 
   async function handleLogout() {
-    await signOut();
-    navigate('/admin/login');
+    try {
+      await signOut();
+      navigate('/admin/login');
+    } catch {
+      // O AuthContext apresenta o erro e revoga imediatamente o acesso local.
+      // Evitar uma rejeição de Promise não tratada no clique de logout.
+      navigate('/admin/login');
+    }
   }
 
   return (
