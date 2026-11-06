@@ -6,7 +6,8 @@
  * award_program Portugal (fallback global apenas se o override não
  * existir); turnstile_site_key é GLOBAL. Resolução via camada central
  * (slug, sem UUID hardcoded); linhas de outro programa nunca contaminam.
- * Fallback seguro: votação ligada, CAPTCHA desligado (preview imediato).
+ * Em produção, falha de configuração bloqueia o voto (fail-closed).
+ * Sem Supabase, o preview local mantém a simulação ativa.
  */
 import { supabase, usePublicQuery } from './usePublicQuery';
 import {
@@ -57,12 +58,12 @@ function useVotingSettingsQuery() {
       const siteKey =
         typeof rawKey === 'string' ? rawKey : String(rawKey ?? '');
       return {
-        votingEnabled: asBool(map.get('voting_enabled'), true),
+        votingEnabled: asBool(map.get('voting_enabled'), false),
         turnstileEnabled: asBool(map.get('turnstile_enabled'), false),
         turnstileSiteKey: siteKey,
       };
     },
-    FALLBACK_SETTINGS,
+    supabase ? { ...FALLBACK_SETTINGS, votingEnabled: false } : FALLBACK_SETTINGS,
     [scopeId],
   );
 }
