@@ -85,6 +85,11 @@ if (missing.length > 0) {
 }
 
 const dbUrl = process.env.DATABASE_URL ?? '';
+// Nunca permitir a execução deste replay legado contra o projeto de produção conhecido.
+if (/agtgtcnwfrskvpegxoir/i.test(dbUrl)) {
+  console.error('BLOQUEADO: replay de migrations legado proibido no Supabase de produção.');
+  process.exit(8);
+}
 if (!dbUrl || dbUrl.includes('[YOUR-PASSWORD]') || dbUrl.includes('[ref]')) {
   console.error('\nPARE — DATABASE_URL com password real não configurada.');
   console.error('A DDL (CREATE TABLE/POLICY/FUNCTION) não pode ser aplicada via REST/anon key.');
@@ -114,7 +119,7 @@ if (history.error || history.status !== 0) {
   console.error((history.stderr ?? history.error?.message ?? '').slice(0, 1000));
   process.exit(6);
 }
-const applied = history.stdout.trim().split(/\\r?\\n/).filter(Boolean);
+const applied = history.stdout.trim().split(/\r?\n/).filter(Boolean);
 if (applied.length > 0) {
   console.error('BLOQUEADO: o destino já contém migrations registadas:', applied.join(', '));
   console.error('Este script legado não faz reconciliação e não pode ser usado neste destino.');
