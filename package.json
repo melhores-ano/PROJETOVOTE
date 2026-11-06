@@ -30,7 +30,8 @@
     "backend:4b:vote-tests": "node scripts/prompt-4b-vote-tests.mjs",
     "audit:migrations": "node scripts/audit-migration-inventory.mjs",
     "test:audit:migrations": "node scripts/test-audit-migration-inventory.mjs",
-    "test:legacy-migrations": "node scripts/test-legacy-migration-guard.mjs"
+    "test:legacy-migrations": "node scripts/test-legacy-migration-guard.mjs",
+    "test:auth": "node scripts/test-auth-guards.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
