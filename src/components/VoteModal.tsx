@@ -145,7 +145,7 @@ export function VoteModal({
                 </GhostButton>
                 <GoldButton
                   onClick={onConfirm}
-                  disabled={submitting || (turnstileEnabled && !!turnstileSiteKey && !captchaToken)}
+                  disabled={submitting || (turnstileEnabled && (!turnstileSiteKey || !captchaToken))}
                   aria-busy={submitting}
                 >
                   {submitting ? (
