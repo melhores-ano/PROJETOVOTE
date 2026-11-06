@@ -32,13 +32,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setTimeout(() => reject(new Error('profile-timeout')), 6000),
       );
       const { data, error } = await Promise.race([query, timeout]);
-      if (error) {
-        setAuthError('Não foi possível carregar o perfil de administrador.');
-        return null;
-      }
+      if (error) return null;
       return (data as Profile) ?? null;
     } catch {
-      setAuthError('Não foi possível carregar o perfil de administrador.');
       return null;
     }
   }, []);
@@ -68,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUserId(session.user.id);
           setEmail(session.user.email ?? null);
           setProfile(p);
+          setAuthError(p ? null : 'Não foi possível validar as permissões de administração.');
           setLoading(false);
         }
       } catch (err) {
@@ -86,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUserId(null);
         setEmail(null);
         setProfile(null);
+        setAuthError(null);
         setLoading(false);
         return;
       }
@@ -144,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserId(null);
     setEmail(null);
     setProfile(null);
+    setAuthError(null);
   }, []);
 
   const value = useMemo<AuthContextValue>(() => ({
