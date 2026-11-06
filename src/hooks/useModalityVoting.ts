@@ -8,7 +8,7 @@
  * A autoridade anti-duplicado é a BD (UNIQUE por modalidade + Edge Function
  * cast-modality-vote). Marca local por âmbito para UX imediata.
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   castModalityVote,
   hasLocalModalityVoteMark,
@@ -37,6 +37,7 @@ export function useModalityVoting() {
   const [status, setStatus] = useState<ModalityVoteStatus | null>(null);
   const [message, setMessage] = useState<string>('');
   const [captchaToken, setCaptchaToken] = useState<string>('');
+  const submittingRef = useRef(false);
 
   const scopeKey = useMemo(
     () =>
@@ -60,7 +61,8 @@ export function useModalityVoting() {
   }, [phase]);
 
   const submit = useCallback(async () => {
-    if (!target || phase === 'submitting') return;
+    if (!target || phase === 'submitting' || submittingRef.current) return;
+    submittingRef.current = true;
     setPhase('submitting');
     const result = await castModalityVote(target.entryId, target.modalityId, {
       captchaToken: captchaToken || undefined,
@@ -72,6 +74,7 @@ export function useModalityVoting() {
       const key = modalityScopeKey(target.campaignId, target.cityId, target.categoryId, target.modalityId);
       setLocalModalityVoteMark(key);
     }
+    submittingRef.current = false;
     setPhase('done');
   }, [target, phase, captchaToken]);
 
