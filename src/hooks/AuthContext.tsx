@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import type { AdminRole, Profile } from '../types/database';
 
@@ -22,6 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const authGeneration = useRef(0);
 
   const loadProfile = useCallback(async (uid: string): Promise<Profile | null> => {
     if (!supabase) return null;
@@ -44,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    const initialGeneration = authGeneration.current;
     async function init() {
       if (!supabase) {
         setLoading(false);
@@ -62,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
         const p = await loadProfile(session.user.id);
-        if (!cancelled) {
+        if (!cancelled && initialGeneration === authGeneration.current) {
           setUserId(session.user.id);
           setEmail(session.user.email ?? null);
           setProfile(p);
@@ -79,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Supabase recomenda não aguardar chamadas à API dentro do callback de Auth:
     // podem bloquear o processamento de eventos de autenticação.
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      const generation = ++authGeneration.current;
       if (!session?.user) {
         setUserId(null);
         setEmail(null);
@@ -93,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setTimeout(() => {
         if (cancelled) return;
         void loadProfile(uid).then((p) => {
-          if (cancelled) return;
+          if (cancelled || generation !== authGeneration.current) return;
           setUserId(uid);
           setEmail(userEmail);
           setProfile(p);
@@ -103,6 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     return () => {
       cancelled = true;
+      authGeneration.current++;
       sub.subscription.unsubscribe();
     };
   }, [loadProfile]);
