@@ -75,6 +75,7 @@ export default function VotesAdminPage() {
   const attempts = useVoteAttempts(outcome);
 
   const ov = overview.data;
+  const statsError = overview.error || timeline.error;
   const maxCity = Math.max(0, ...(ov?.by_city.map((c) => c.total_votes) ?? [0]));
   const maxCat = Math.max(0, ...(ov?.by_category.map((c) => c.total_votes) ?? [0]));
   const maxDay = Math.max(1, ...(timeline.data ?? []).map((d) => d.total_votes));
@@ -87,7 +88,9 @@ export default function VotesAdminPage() {
       />
       <SupabaseNotice />
 
-      {!activeCampaign.loading && !overview.loading && (
+      {statsError && <ErrorState message={statsError} onRetry={() => { overview.refetch(); timeline.refetch(); }} />}
+
+      {!activeCampaign.loading && !overview.loading && !overview.error && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <AdminCard>
             <div className="flex items-center gap-3">
@@ -96,7 +99,7 @@ export default function VotesAdminPage() {
               </span>
               <div>
                 <p className="font-display text-2xl font-bold text-white">{ov?.total_votes ?? 0}</p>
-                <p className="text-xs text-slate-400">Total de votos (edição activa)</p>
+                <p className="text-xs text-slate-400">Total de votos (edição selecionada)</p>
               </div>
             </div>
           </AdminCard>
@@ -139,10 +142,12 @@ export default function VotesAdminPage() {
       <AdminCard title="Evolução — últimos 14 dias" className="mt-4">
         {timeline.loading ? (
           <PageLoading label="A carregar evolução…" />
+        ) : timeline.error ? (
+          <p className="py-6 text-center text-sm text-red-300">Não foi possível carregar a evolução dos votos.</p>
         ) : (timeline.data ?? []).length === 0 ? (
           <p className="py-6 text-center text-sm text-slate-500">
             {isLive
-              ? 'Sem votos na edição activa. A curva preencher-se-á com a votação.'
+              ? 'Sem votos na edição selecionada. A curva preencher-se-á com a votação.'
               : 'Modo de demonstração: ligue o Supabase para ver a evolução real.'}
           </p>
         ) : (
@@ -166,7 +171,9 @@ export default function VotesAdminPage() {
       {/* Repartições */}
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <AdminCard title="Votos por cidade">
-          {(ov?.by_city ?? []).length === 0 ? (
+          {overview.error ? (
+            <p className="py-6 text-center text-sm text-red-300">Dados indisponíveis.</p>
+          ) : (ov?.by_city ?? []).length === 0 ? (
             <p className="py-6 text-center text-sm text-slate-500">Sem repartição por cidade.</p>
           ) : (
             <ul className="space-y-3">
@@ -182,7 +189,9 @@ export default function VotesAdminPage() {
           )}
         </AdminCard>
         <AdminCard title="Votos por categoria">
-          {(ov?.by_category ?? []).length === 0 ? (
+          {overview.error ? (
+            <p className="py-6 text-center text-sm text-red-300">Dados indisponíveis.</p>
+          ) : (ov?.by_category ?? []).length === 0 ? (
             <p className="py-6 text-center text-sm text-slate-500">Sem repartição por categoria.</p>
           ) : (
             <ul className="space-y-3">
