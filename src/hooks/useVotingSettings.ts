@@ -55,11 +55,12 @@ function useVotingSettingsQuery() {
       const asBool = (v: unknown, fb: boolean): boolean =>
         typeof v === 'boolean' ? v : typeof v === 'string' ? v === 'true' : fb;
       const rawKey = map.get('turnstile_site_key');
+      const captchaEnabled = asBool(map.get('turnstile_enabled'), false);
       const siteKey =
         typeof rawKey === 'string' ? rawKey : String(rawKey ?? '');
       return {
         votingEnabled: asBool(map.get('voting_enabled'), false),
-        turnstileEnabled: asBool(map.get('turnstile_enabled'), false),
+        turnstileEnabled: captchaEnabled,
         turnstileSiteKey: siteKey,
       };
     },
