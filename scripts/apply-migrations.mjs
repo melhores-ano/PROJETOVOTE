@@ -104,6 +104,23 @@ if (check.error || check.status !== 0) {
   process.exit(3);
 }
 
+// Preflight obrigatório: nunca repetir migrations já registadas no destino.
+// Se a tabela de histórico não puder ser consultada, falhar em segurança.
+const history = spawnSync('psql', [dbUrl, '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c',
+  "SELECT version FROM supabase_migrations.schema_migrations WHERE version IN ('0001','0002','0003','0004','0005','0006','0007','0008','0009') ORDER BY version"],
+  { encoding: 'utf8' });
+if (history.error || history.status !== 0) {
+  console.error('BLOQUEADO: não foi possível verificar o histórico remoto de migrations.');
+  console.error((history.stderr ?? history.error?.message ?? '').slice(0, 1000));
+  process.exit(6);
+}
+const applied = history.stdout.trim().split(/\\r?\\n/).filter(Boolean);
+if (applied.length > 0) {
+  console.error('BLOQUEADO: o destino já contém migrations registadas:', applied.join(', '));
+  console.error('Este script legado não faz reconciliação e não pode ser usado neste destino.');
+  process.exit(7);
+}
+
 for (const f of ORDER) {
   const sql = readFileSync(join(dir, f), 'utf8');
   console.log(`\n--- A aplicar ${f} (${sql.length} chars) ---`);
