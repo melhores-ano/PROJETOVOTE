@@ -76,7 +76,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     init();
 
     if (!supabase) return;
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    // Supabase recomenda não aguardar chamadas à API dentro do callback de Auth:
+    // podem bloquear o processamento de eventos de autenticação.
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session?.user) {
         setUserId(null);
         setEmail(null);
@@ -84,14 +86,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return;
       }
+      const uid = session.user.id;
+      const userEmail = session.user.email ?? null;
       setLoading(true);
-      const p = await loadProfile(session.user.id);
-      if (!cancelled) {
-        setUserId(session.user.id);
-        setEmail(session.user.email ?? null);
-        setProfile(p);
-        setLoading(false);
-      }
+      // Executar a leitura do perfil fora do callback de Auth.
+      setTimeout(() => {
+        if (cancelled) return;
+        void loadProfile(uid).then((p) => {
+          if (cancelled) return;
+          setUserId(uid);
+          setEmail(userEmail);
+          setProfile(p);
+          setLoading(false);
+        });
+      }, 0);
     });
     return () => {
       cancelled = true;
