@@ -69,10 +69,10 @@ export default function VotesAdminPage() {
     : activeCampaign.data?.id;
   const editionLabel = adminCtx?.selectedCampaign
     ? `Edição ${adminCtx.selectedCampaign.year} — ${adminCtx.selectedCampaign.name}`
-    : 'edição activa';
+    : (adminCtx ? 'nenhuma edição selecionada' : 'edição activa');
   const overview = useAdminVoteOverview(campaignId);
   const timeline = useAdminVoteTimeline(campaignId, 14);
-  const attempts = useVoteAttempts(outcome);
+  const attempts = useVoteAttempts(outcome, 200, campaignId);
 
   const ov = overview.data;
   const statsError = overview.error || timeline.error;
@@ -88,9 +88,13 @@ export default function VotesAdminPage() {
       />
       <SupabaseNotice />
 
+      {!campaignId && !adminCtx?.loading && (
+        <p className="mt-4 text-sm text-amber-300">Selecione uma edição para consultar os votos e eventos de segurança.</p>
+      )}
+
       {statsError && <ErrorState message={statsError} onRetry={() => { overview.refetch(); timeline.refetch(); }} />}
 
-      {!activeCampaign.loading && !overview.loading && !overview.error && (
+      {!adminCtx?.loading && !overview.loading && !overview.error && !!campaignId && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <AdminCard>
             <div className="flex items-center gap-3">
