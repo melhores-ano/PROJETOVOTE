@@ -98,6 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUserId(uid);
           setEmail(userEmail);
           setProfile(p);
+          setAuthError(p ? null : 'Não foi possível validar as permissões de administração.');
           setLoading(false);
         });
       }, 0);
@@ -133,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserId(data.user.id);
     setEmail(data.user.email ?? null);
     setProfile(p);
+    setAuthError(null);
     return { ok: true, message: 'Sessão iniciada com sucesso.' };
   }, [loadProfile]);
 
