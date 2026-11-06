@@ -6,7 +6,7 @@
  * Guarda marca local por âmbito (campanha×cidade×categoria) para UX imediata;
  * a autoridade anti-duplicado continua a ser a BD (UNIQUE + Edge Function).
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   castVote,
   demoScopeKey,
@@ -33,6 +33,8 @@ export function useVoting() {
   const [status, setStatus] = useState<CastVoteStatus | null>(null);
   const [message, setMessage] = useState<string>('');
   const [captchaToken, setCaptchaToken] = useState<string>('');
+  // Ref síncrona: dois cliques no mesmo render nunca enviam dois pedidos.
+  const submittingRef = useRef(false);
 
   const scopeKey = useMemo(
     () =>
@@ -55,7 +57,8 @@ export function useVoting() {
   }, [phase]);
 
   const submit = useCallback(async () => {
-    if (!target || phase === 'submitting') return;
+    if (!target || phase === 'submitting' || submittingRef.current) return;
+    submittingRef.current = true;
     setPhase('submitting');
     const result = await castVote(target.entryId, {
       captchaToken: captchaToken || undefined,
@@ -66,6 +69,7 @@ export function useVoting() {
     if (result.status === 'success' || result.status === 'already_voted') {
       if (scopeKey) setLocalVoteMark(scopeKey);
     }
+    submittingRef.current = false;
     setPhase('done');
   }, [target, phase, captchaToken, scopeKey]);
 
