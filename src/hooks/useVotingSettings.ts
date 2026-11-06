@@ -59,7 +59,7 @@ function useVotingSettingsQuery() {
       const siteKey =
         typeof rawKey === 'string' ? rawKey : String(rawKey ?? '');
       return {
-        votingEnabled: asBool(map.get('voting_enabled'), false),
+        votingEnabled: asBool(map.get('voting_enabled'), false) && (!captchaEnabled || siteKey.length > 0),
         turnstileEnabled: captchaEnabled,
         turnstileSiteKey: siteKey,
       };
