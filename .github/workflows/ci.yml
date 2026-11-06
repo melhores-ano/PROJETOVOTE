@@ -38,5 +38,7 @@ jobs:
         run: npm run test:auth
       - name: Legacy migration replay safety tests
         run: npm run test:legacy-migrations
+      - name: Category area repair proposal offline safety checks
+        run: npm run test:category-area-repair
       - name: Report migration version conflicts (non-blocking until reconciled)
         run: npm run audit:migrations
