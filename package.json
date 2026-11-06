@@ -27,7 +27,9 @@
     "backend:4b:audit": "node scripts/prompt-4b-audit.mjs",
     "backend:4b:secrets": "node scripts/prompt-4b-secrets.mjs --status",
     "backend:4b:deploy": "node scripts/prompt-4b-deploy.mjs",
-    "backend:4b:vote-tests": "node scripts/prompt-4b-vote-tests.mjs"
+    "backend:4b:vote-tests": "node scripts/prompt-4b-vote-tests.mjs",
+    "audit:migrations": "node scripts/audit-migration-inventory.mjs",
+    "test:audit:migrations": "node scripts/test-audit-migration-inventory.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
