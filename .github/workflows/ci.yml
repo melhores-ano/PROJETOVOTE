@@ -26,6 +26,8 @@ jobs:
         run: npm run build
       - name: Voting engine regression tests
         run: npm run test:voting
+      - name: Voting interface safety and recovery checks
+        run: npm run test:voting-ui
       - name: Results ranking regression tests
         run: npm run test:results
       - name: CSV import regression tests
