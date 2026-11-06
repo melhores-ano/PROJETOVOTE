@@ -181,14 +181,15 @@ export interface VoteAttemptRow {
   business: string | null;
 }
 
-export function useVoteAttempts(outcome: VoteAttemptOutcome | 'all', limit = 200): AsyncState<VoteAttemptRow[]> {
+export function useVoteAttempts(outcome: VoteAttemptOutcome | 'all', limit = 200, campaignId?: string): AsyncState<VoteAttemptRow[]> {
   return useAsync<VoteAttemptRow[]>(async () => {
-    if (!supabase) return [];
+    if (!supabase || !campaignId) return [];
     let q = supabase
       .from('vote_attempts')
       .select('id, outcome, reason, created_at, campaign:campaigns(year), city:cities(name), category:categories(name), business:businesses(name)')
       .order('created_at', { ascending: false })
       .limit(limit);
+    q = q.eq('campaign_id', campaignId);
     if (outcome !== 'all') q = q.eq('outcome', outcome);
     const { data, error } = await q;
     if (error) throw error;
@@ -206,7 +207,7 @@ export function useVoteAttempts(outcome: VoteAttemptOutcome | 'all', limit = 200
       category: r.category?.name ?? null,
       business: r.business?.name ?? null,
     }));
-  }, [], [outcome, limit]);
+  }, [], [outcome, limit, campaignId ?? null]);
 }
 
 /* ---------- Contagem de votos + tally por participante (só leitura admin) ---------- */
