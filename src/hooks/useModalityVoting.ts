@@ -64,18 +64,23 @@ export function useModalityVoting() {
     if (!target || phase === 'submitting' || submittingRef.current) return;
     submittingRef.current = true;
     setPhase('submitting');
-    const result = await castModalityVote(target.entryId, target.modalityId, {
-      captchaToken: captchaToken || undefined,
-      demoScopeKey: modalityScopeKey(target.campaignId, target.cityId, target.categoryId, target.modalityId),
-    });
-    setStatus(result.status);
-    setMessage(result.message);
-    if (result.status === 'success' || result.status === 'already_voted') {
-      const key = modalityScopeKey(target.campaignId, target.cityId, target.categoryId, target.modalityId);
-      setLocalModalityVoteMark(key);
+    try {
+      const result = await castModalityVote(target.entryId, target.modalityId, {
+        captchaToken: captchaToken || undefined,
+        demoScopeKey: modalityScopeKey(target.campaignId, target.cityId, target.categoryId, target.modalityId),
+      });
+      setStatus(result.status);
+      setMessage(result.message);
+      if (result.status === 'success' || result.status === 'already_voted') {
+        setLocalModalityVoteMark(modalityScopeKey(target.campaignId, target.cityId, target.categoryId, target.modalityId));
+      }
+    } catch {
+      setStatus('server_error');
+      setMessage('Ocorreu um erro de ligação. Tente novamente mais tarde.');
+    } finally {
+      submittingRef.current = false;
+      setPhase('done');
     }
-    submittingRef.current = false;
-    setPhase('done');
   }, [target, phase, captchaToken]);
 
   const reset = useCallback(() => {
