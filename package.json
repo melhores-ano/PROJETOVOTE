@@ -33,7 +33,8 @@
     "test:legacy-migrations": "node scripts/test-legacy-migration-guard.mjs",
     "test:auth": "node scripts/test-auth-guards.mjs",
     "test:voting-ui": "node scripts/test-voting-ui-guards.mjs",
-    "test:category-area-repair": "node scripts/test-category-area-repair.mjs"
+    "test:category-area-repair": "node scripts/test-category-area-repair.mjs",
+    "test:reconcile:migrations": "node scripts/test-reconcile-migration-history.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
