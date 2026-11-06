@@ -75,6 +75,8 @@ export default function VotesAdminPage() {
   const attempts = useVoteAttempts(outcome, 200, campaignId);
 
   const ov = overview.data;
+  const noEdition = !campaignId;
+  const statsLoading = !!adminCtx?.loading || overview.loading;
   const statsError = overview.error || timeline.error;
   const maxCity = Math.max(0, ...(ov?.by_city.map((c) => c.total_votes) ?? [0]));
   const maxCat = Math.max(0, ...(ov?.by_category.map((c) => c.total_votes) ?? [0]));
@@ -94,7 +96,7 @@ export default function VotesAdminPage() {
 
       {statsError && <ErrorState message={statsError} onRetry={() => { overview.refetch(); timeline.refetch(); }} />}
 
-      {!adminCtx?.loading && !overview.loading && !overview.error && !!campaignId && (
+      {!statsLoading && !overview.error && !noEdition && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <AdminCard>
             <div className="flex items-center gap-3">
@@ -144,7 +146,9 @@ export default function VotesAdminPage() {
 
       {/* Linha temporal */}
       <AdminCard title="Evolução — últimos 14 dias" className="mt-4">
-        {timeline.loading ? (
+        {noEdition ? (
+          <p className="py-6 text-center text-sm text-slate-500">Selecione uma edição para consultar a evolução.</p>
+        ) : timeline.loading ? (
           <PageLoading label="A carregar evolução…" />
         ) : timeline.error ? (
           <p className="py-6 text-center text-sm text-red-300">Não foi possível carregar a evolução dos votos.</p>
@@ -175,7 +179,11 @@ export default function VotesAdminPage() {
       {/* Repartições */}
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <AdminCard title="Votos por cidade">
-          {overview.error ? (
+          {noEdition ? (
+            <p className="py-6 text-center text-sm text-slate-500">Selecione uma edição.</p>
+          ) : overview.loading ? (
+            <PageLoading label="A carregar repartição…" />
+          ) : overview.error ? (
             <p className="py-6 text-center text-sm text-red-300">Dados indisponíveis.</p>
           ) : (ov?.by_city ?? []).length === 0 ? (
             <p className="py-6 text-center text-sm text-slate-500">Sem repartição por cidade.</p>
@@ -212,7 +220,7 @@ export default function VotesAdminPage() {
         </AdminCard>
       </div>
 
-      {(ov?.attempts_by_outcome ?? []).length > 0 && (
+      {!noEdition && !overview.loading && !overview.error && (ov?.attempts_by_outcome ?? []).length > 0 && (
         <AdminCard title="Antifraude — últimos 30 dias" className="mt-4">
           <div className="flex flex-wrap gap-2">
             {(ov?.attempts_by_outcome ?? []).map((a) => (
@@ -242,7 +250,9 @@ export default function VotesAdminPage() {
             ))}
           </Select>
         </div>
-        {attempts.loading ? (
+        {noEdition ? (
+          <p className="py-6 text-center text-sm text-slate-500">Selecione uma edição para consultar os eventos.</p>
+        ) : attempts.loading ? (
           <PageLoading label="A carregar eventos…" />
         ) : attempts.error ? (
           <ErrorState message={attempts.error} onRetry={attempts.refetch} />
