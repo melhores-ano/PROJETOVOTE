@@ -144,11 +144,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     ++authGeneration.current;
-    if (supabase) await supabase.auth.signOut();
+    // Revogar imediatamente o acesso na interface, mesmo que a rede falhe.
     setUserId(null);
     setEmail(null);
     setProfile(null);
     setAuthError(null);
+    setLoading(false);
+    if (supabase) {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        setAuthError('Não foi possível terminar a sessão no servidor. Tente novamente.');
+        throw error;
+      }
+    }
   }, []);
 
   const value = useMemo<AuthContextValue>(() => ({
