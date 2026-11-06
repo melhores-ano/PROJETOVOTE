@@ -9,6 +9,7 @@ const main = read('src/hooks/useVoting.ts');
 const modality = read('src/hooks/useModalityVoting.ts');
 const settings = read('src/hooks/useVotingSettings.ts');
 const category = read('src/pages/public/CategoryPage.tsx');
+const modal = read('src/components/VoteModal.tsx');
 
 const checks = [
   ['main vote synchronous in-flight guard', /submittingRef\.current\) return;/.test(main)],
@@ -20,6 +21,7 @@ const checks = [
   ['production settings default to disabled', /supabase \? \{ \.\.\.FALLBACK_SETTINGS, votingEnabled: false \}/.test(settings)],
   ['missing voting flag defaults to disabled', /asBool\(map\.get\('voting_enabled'\), false\)/.test(settings)],
   ['captcha key required when enabled', /!captchaEnabled \|\| siteKey\.length > 0/.test(settings)],
+  ['confirmation requires CAPTCHA key and token', /turnstileEnabled && \(!turnstileSiteKey \|\| !captchaToken\)/.test(modal)],
   ['category waits for validated settings', /!votingSettings\.loading && !votingSettings\.error && votingSettings\.data\?\.votingEnabled === true/.test(category)],
 ];
 
