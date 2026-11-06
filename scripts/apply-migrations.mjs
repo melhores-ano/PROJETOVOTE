@@ -65,12 +65,12 @@ function recommend(errText) {
 }
 
 // Segurança: este utilitário legado reaplica 0001–0009 sem consultar o histórico remoto.
-// Não permitir execução acidental num backend já migrado. A flag não substitui
+// Não permitir execução acidental num backend já migrado nem em servidores remotos. A flag não substitui
 // reconciliação, backup e aprovação explícita para qualquer ambiente real.
 if (!process.argv.includes('--confirm-legacy-replay')) {
   console.error('BLOQUEADO: este script reaplica migrations antigas sem verificar o histórico remoto.');
   console.error('Não executar em produção. Reconciliar primeiro as versões existentes.');
-  console.error('Para testes isolados e conscientes: --confirm-legacy-replay');
+  console.error('Apenas para base de testes local: --confirm-legacy-replay');
   process.exit(5);
 }
 
@@ -85,20 +85,21 @@ if (missing.length > 0) {
 }
 
 const dbUrl = process.env.DATABASE_URL ?? '';
-// Nunca permitir a execução deste replay legado contra o projeto de produção conhecido.
-if (/agtgtcnwfrskvpegxoir/i.test(dbUrl)) {
-  console.error('BLOQUEADO: replay de migrations legado proibido no Supabase de produção.');
-  process.exit(8);
-}
-if (!dbUrl || dbUrl.includes('[YOUR-PASSWORD]') || dbUrl.includes('[ref]')) {
-  console.error('\nPARE — DATABASE_URL com password real não configurada.');
-  console.error('A DDL (CREATE TABLE/POLICY/FUNCTION) não pode ser aplicada via REST/anon key.');
-  console.error('\nAÇÃO MANUAL NECESSÁRIA (1 min por ficheiro):');
-  console.error('  Dashboard Supabase (melhores-do-ano-portugal) > SQL Editor > New query,');
-  console.error('  colar e correr POR ORDEM:');
-  for (const f of ORDER) console.error(`    ${f}`);
-  console.error('  Depois: node scripts/verify-real-backend.mjs');
+if (!dbUrl) {
+  console.error('BLOQUEADO: DATABASE_URL não configurada. Este script é exclusivo de bases de testes locais.');
   process.exit(2);
+}
+let target;
+try {
+  target = new URL(dbUrl);
+} catch {
+  console.error('BLOQUEADO: DATABASE_URL inválida.');
+  process.exit(2);
+}
+const localHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+if (!['postgres:', 'postgresql:'].includes(target.protocol) || !localHosts.has(target.hostname)) {
+  console.error('BLOQUEADO: este script legado só pode correr numa base PostgreSQL local de testes.');
+  process.exit(8);
 }
 
 // Verificar psql disponível
