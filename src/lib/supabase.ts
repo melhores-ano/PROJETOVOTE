@@ -51,7 +51,7 @@ if (isSupabaseConfigured) {
       global: {
         // Evita que o preview trave em hosts inalcançáveis.
         fetch: (input, init) =>
-          fetch(input, { ...init, signal: AbortSignal.timeout(8000) }),
+          fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(8000) }),
       },
     });
   } catch (err) {
