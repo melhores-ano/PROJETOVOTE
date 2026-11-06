@@ -60,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data } = await Promise.race([sessionPromise, timeout]);
         const session = data.session;
         if (!session?.user) {
-          if (!cancelled) setLoading(false);
+          if (!cancelled && initialGeneration === authGeneration.current) setLoading(false);
           return;
         }
         const p = await loadProfile(session.user.id);
@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (err) {
         console.warn('[auth] init com fallback (sem sessão):', err);
-        if (!cancelled) setLoading(false);
+        if (!cancelled && initialGeneration === authGeneration.current) setLoading(false);
       }
     }
     init();
