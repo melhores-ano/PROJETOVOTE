@@ -1,0 +1,36 @@
+name: CI — build and regression tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - audit/security-migrations-baseline-20261106
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Typecheck and production build
+        run: npm run build
+      - name: Voting engine regression tests
+        run: npm run test:voting
+      - name: Results ranking regression tests
+        run: npm run test:results
+      - name: CSV import regression tests
+        run: npm run test:csv
+      - name: Migration inventory regression tests
+        run: npm run test:audit:migrations
+      - name: Report migration version conflicts (non-blocking until reconciled)
+        run: npm run audit:migrations
