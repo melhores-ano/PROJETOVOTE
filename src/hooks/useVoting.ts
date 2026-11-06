@@ -60,17 +60,23 @@ export function useVoting() {
     if (!target || phase === 'submitting' || submittingRef.current) return;
     submittingRef.current = true;
     setPhase('submitting');
-    const result = await castVote(target.entryId, {
-      captchaToken: captchaToken || undefined,
-      demoScopeKey: demoScopeKey(target.campaignId, target.cityId, target.categoryId),
-    });
-    setStatus(result.status);
-    setMessage(result.message);
-    if (result.status === 'success' || result.status === 'already_voted') {
-      if (scopeKey) setLocalVoteMark(scopeKey);
+    try {
+      const result = await castVote(target.entryId, {
+        captchaToken: captchaToken || undefined,
+        demoScopeKey: demoScopeKey(target.campaignId, target.cityId, target.categoryId),
+      });
+      setStatus(result.status);
+      setMessage(result.message);
+      if (result.status === 'success' || result.status === 'already_voted') {
+        if (scopeKey) setLocalVoteMark(scopeKey);
+      }
+    } catch {
+      setStatus('server_error');
+      setMessage('Ocorreu um erro de ligação. Tente novamente mais tarde.');
+    } finally {
+      submittingRef.current = false;
+      setPhase('done');
     }
-    submittingRef.current = false;
-    setPhase('done');
   }, [target, phase, captchaToken, scopeKey]);
 
   const reset = useCallback(() => {
