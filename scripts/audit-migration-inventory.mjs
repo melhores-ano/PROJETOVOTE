@@ -11,7 +11,14 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const dir = resolve(root, 'supabase', 'migrations');
+const dirArgIndex = process.argv.indexOf('--dir');
+if (dirArgIndex !== -1 && !process.argv[dirArgIndex + 1]) {
+  console.error('Uso: --dir <caminho>');
+  process.exit(2);
+}
+const dir = dirArgIndex === -1
+  ? resolve(root, 'supabase', 'migrations')
+  : resolve(process.argv[dirArgIndex + 1]);
 const strict = process.argv.includes('--strict');
 const files = (await readdir(dir)).filter((name) => name.endsWith('.sql')).sort();
 const versions = new Map();
